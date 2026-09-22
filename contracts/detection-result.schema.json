@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/contracts/detection-result.schema.json",
+  "title": "DetectionResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "scanId",
+    "success",
+    "hasDefect",
+    "sourceImage",
+    "displayImage",
+    "processing",
+    "detections"
+  ],
+  "properties": {
+    "scanId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "success": {
+      "const": true
+    },
+    "hasDefect": {
+      "type": "boolean"
+    },
+    "sourceImage": {
+      "$ref": "#/$defs/imageSize"
+    },
+    "displayImage": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/imageSize"
+        },
+        {
+          "type": "object",
+          "required": ["url", "coordinateSpace"],
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "coordinateSpace": {
+              "enum": ["source", "processed"]
+            }
+          }
+        }
+      ]
+    },
+    "processing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preprocessingMs",
+        "inferenceMs",
+        "postprocessingMs",
+        "totalMs"
+      ],
+      "properties": {
+        "preprocessingMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "inferenceMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "postprocessingMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "totalMs": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "detections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/detection"
+      }
+    }
+  },
+  "$defs": {
+    "imageSize": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "coordinateSpace": {
+          "enum": ["source", "processed"]
+        }
+      }
+    },
+    "detection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "class",
+        "confidence",
+        "x1",
+        "y1",
+        "x2",
+        "y2"
+      ],
+      "properties": {
+        "class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "x1": {
+          "type": "number",
+          "minimum": 0
+        },
+        "y1": {
+          "type": "number",
+          "minimum": 0
+        },
+        "x2": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "y2": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    }
+  }
+}

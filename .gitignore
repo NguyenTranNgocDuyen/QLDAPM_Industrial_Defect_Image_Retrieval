@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Generated experiment artifacts
+image-processing/outputs/
+
+# Java and Flutter build output
+backend/target/
+app/.dart_tool/
+app/build/

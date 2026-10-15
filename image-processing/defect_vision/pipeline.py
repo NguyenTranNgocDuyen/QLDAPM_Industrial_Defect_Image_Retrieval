@@ -59,6 +59,8 @@ class PipelineConfig:
     points: Sequence[tuple[float, float]] | None = None
     auto_perspective: bool = False
     perspective_model_path: str | None = None
+    perspective_model_id: str = "phone-segmentation-uiymg/1"
+    roboflow_api_key: str | None = None
     illumination_method: IlluminationMethod | str = "clahe"
     gamma: float | None = None
     target_mean: float = 128.0
@@ -147,7 +149,10 @@ def run_preprocessing_pipeline(
     target_points = config.points
     if target_points is None and config.auto_perspective:
         target_points = detect_device_corners(
-            current_image, segmentation_model=config.perspective_model_path
+            current_image,
+            segmentation_model=config.perspective_model_path,
+            model_id=config.perspective_model_id,
+            api_key=config.roboflow_api_key,
         )
 
     if target_points is not None:
@@ -155,6 +160,8 @@ def run_preprocessing_pipeline(
         persp_result = correct_perspective(current_image, target_points)
         current_image = persp_result.image
         timings["perspective_ms"] = (perf_counter() - t0) * 1000.0
+    elif config.auto_perspective or config.points:
+        print("[Pipeline] Warning: Could not obtain 4 device corners. Perspective correction was skipped.")
 
     # Stage 2: Illumination Correction
     illum_result: IlluminationResult | None = None

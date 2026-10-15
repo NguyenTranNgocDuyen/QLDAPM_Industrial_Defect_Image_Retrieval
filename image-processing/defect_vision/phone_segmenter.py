@@ -239,61 +239,137 @@ def make_mask_overlay(image: Image, mask: Image, alpha: float = 0.45) -> Image:
 
 
 class PhoneSegmenter:
-    """Manages the RF-DETR phone segmentation model and corner rectification."""
+    """Manages phone segmentation and corner-guided perspective rectification.
+
+    Supports dual backends:
+    1. Local weights: Loads local weights.pt using RF-DETR (100% offline, fastest).
+    2. Auto-download: If local weights are missing (e.g. after fresh clone),
+       automatically fetches and caches the model from Roboflow via the
+       Inference SDK using `model_id='phone-segmentation-uiymg/1'`.
+    """
 
     def __init__(
         self,
         model_path: str | Path = "models/weights.pt",
         *,
+        model_id: str = "phone-segmentation-uiymg/1",
+        api_key: str | None = None,
         confidence: float = 0.25,
         device: str = "cpu",
         num_classes: int = 1,
         refine_edges: bool = True,
     ) -> None:
         self.model_path = Path(model_path)
+        self.model_id = model_id
+        self.api_key = api_key
         self.confidence = float(confidence)
         self.device = device
         self.num_classes = int(num_classes)
         self.refine_edges = bool(refine_edges)
         self._model = None
+        self._backend: str | None = None  # 'rfdetr' or 'roboflow_inference'
+
+    def _resolve_api_key(self) -> str | None:
+        if self.api_key:
+            return self.api_key
+        import os
+
+        env_key = os.environ.get("ROBOFLOW_API_KEY")
+        if env_key:
+            return env_key
+        try:
+            import dotenv
+
+            # Check cwd, image-processing root, and repository root for .env
+            env_candidates = [
+                Path.cwd() / ".env",
+                Path(__file__).resolve().parent.parent / ".env",
+                Path(__file__).resolve().parent.parent.parent / ".env",
+            ]
+            for candidate in env_candidates:
+                if candidate.is_file():
+                    dotenv.load_dotenv(dotenv_path=candidate, override=False)
+                    break
+            else:
+                dotenv.load_dotenv()
+            return os.environ.get("ROBOFLOW_API_KEY")
+        except Exception:
+            return None
+
+    def _resolve_model_id(self) -> str:
+        if self.model_id and self.model_id != "phone-segmentation-uiymg/1":
+            return self.model_id
+        import os
+
+        return os.environ.get("ROBOFLOW_PHONE_MODEL_ID", self.model_id)
 
     def _load_model(self):
         if self._model is not None:
             return self._model
 
-        if not self.model_path.is_file():
-            # Try resolving relative to project root or image-processing package directory
-            candidates = [
-                Path("image-processing") / self.model_path,
-                Path(__file__).parent.parent / self.model_path,
-            ]
-            for candidate in candidates:
-                if candidate.is_file():
-                    self.model_path = candidate
-                    break
+        # 1. Check if local model file exists
+        candidates = [
+            self.model_path,
+            Path("image-processing") / self.model_path,
+            Path(__file__).parent.parent / self.model_path,
+        ]
+        resolved_local: Path | None = None
+        for candidate in candidates:
+            if candidate.is_file():
+                resolved_local = candidate
+                break
 
-        if not self.model_path.is_file():
-            raise PhoneSegmenterError(
-                f"Phone segmentation model file not found at: {self.model_path}"
+        if resolved_local is not None:
+            self.model_path = resolved_local
+            try:
+                rfdetr = importlib.import_module("rfdetr")
+            except ImportError as exc:
+                raise PhoneSegmenterError(
+                    "The 'rfdetr' package is required for local phone segmentation. "
+                    "Install it using: pip install rfdetr supervision torch torchvision"
+                ) from exc
+
+            RFDETRSegSmall = getattr(rfdetr, "RFDETRSegSmall", None)
+            if RFDETRSegSmall is None:
+                raise PhoneSegmenterError("RFDETRSegSmall class not found in rfdetr package.")
+
+            self._model = RFDETRSegSmall(
+                pretrain_weights=str(self.model_path),
+                num_classes=self.num_classes,
             )
+            self._backend = "rfdetr"
+            return self._model
 
-        try:
-            rfdetr = importlib.import_module("rfdetr")
-        except ImportError as exc:
-            raise PhoneSegmenterError(
-                "The 'rfdetr' package is required for phone segmentation. "
-                "Install it using: pip install rfdetr supervision torch torchvision"
-            ) from exc
+        # 2. Local model not found; attempt automatic download via Roboflow Inference
+        api_key = self._resolve_api_key()
+        resolved_model_id = self._resolve_model_id()
+        if api_key:
+            try:
+                import inference
 
-        RFDETRSegSmall = getattr(rfdetr, "RFDETRSegSmall", None)
-        if RFDETRSegSmall is None:
-            raise PhoneSegmenterError("RFDETRSegSmall class not found in rfdetr package.")
+                print(
+                    f"[PhoneSegmenter] Local weights not found. "
+                    f"Auto-downloading / initializing model '{resolved_model_id}' from Roboflow..."
+                )
+                self._model = inference.get_model(
+                    model_id=resolved_model_id,
+                    api_key=api_key,
+                )
+                self._backend = "roboflow_inference"
+                return self._model
+            except Exception as exc:
+                raise PhoneSegmenterError(
+                    f"Failed to auto-download model '{resolved_model_id}' via Roboflow Inference: {exc}"
+                ) from exc
 
-        self._model = RFDETRSegSmall(
-            pretrain_weights=str(self.model_path),
-            num_classes=self.num_classes,
+        # 3. Neither local file nor API key available
+        raise PhoneSegmenterError(
+            f"Phone segmentation model not found at '{self.model_path}', and no ROBOFLOW_API_KEY was found.\n"
+            f"To enable phone perspective correction, choose one of these options:\n"
+            f"  1) Set your Roboflow API key in .env (ROBOFLOW_API_KEY=your_key) or pass --api-key.\n"
+            f"  2) Run pre-download: python scripts/download_model.py --api-key your_key\n"
+            f"  3) Or place 'weights.pt' into 'image-processing/models/weights.pt'."
         )
-        return self._model
 
     def predict_mask(self, image: Image) -> tuple[Image | None, float]:
         """Run segmentation model and return binary mask and confidence score."""
@@ -304,15 +380,32 @@ class PhoneSegmenter:
         elif image.shape[2] == 4:
             bgr = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
 
-        detections = model.predict(bgr, threshold=self.confidence)
-        if len(detections.xyxy) == 0 or detections.mask is None:
-            return None, 0.0
+        if self._backend == "rfdetr":
+            detections = model.predict(bgr, threshold=self.confidence)
+            if len(detections.xyxy) == 0 or detections.mask is None:
+                return None, 0.0
 
-        best_idx = int(np.argmax(detections.confidence))
-        best_conf = float(detections.confidence[best_idx])
-        raw_mask = detections.mask[best_idx]
-        mask_uint8 = (raw_mask.astype(np.uint8) * 255)
-        return mask_uint8, best_conf
+            best_idx = int(np.argmax(detections.confidence))
+            best_conf = float(detections.confidence[best_idx])
+            raw_mask = detections.mask[best_idx]
+            mask_uint8 = (raw_mask.astype(np.uint8) * 255)
+            return mask_uint8, best_conf
+
+        elif self._backend == "roboflow_inference":
+            infer_result = model.infer(bgr)
+            res = infer_result[0] if isinstance(infer_result, list) else infer_result
+            import supervision as sv
+
+            detections = sv.Detections.from_inference(res)
+            if len(detections.xyxy) == 0 or detections.mask is None:
+                return None, 0.0
+
+            best_idx = int(np.argmax(detections.confidence))
+            best_conf = float(detections.confidence[best_idx])
+            mask_uint8 = (detections.mask[best_idx].astype(np.uint8) * 255)
+            return mask_uint8, best_conf
+
+        return None, 0.0
 
     def segment_and_correct(self, image: Image) -> PhoneSegmentationResult:
         """End-to-end pipeline: segment phone -> extract 4 corners -> perspective correct."""
@@ -368,12 +461,16 @@ def detect_phone_corners_segmentation(
     image: Image,
     model_path: str | Path = "models/weights.pt",
     *,
+    model_id: str = "phone-segmentation-uiymg/1",
+    api_key: str | None = None,
     confidence: float = 0.25,
     refine_edges: bool = True,
 ) -> PointArray | None:
     """Convenience helper to extract phone corners using the trained segmentation model."""
     segmenter = PhoneSegmenter(
         model_path=model_path,
+        model_id=model_id,
+        api_key=api_key,
         confidence=confidence,
         refine_edges=refine_edges,
     )

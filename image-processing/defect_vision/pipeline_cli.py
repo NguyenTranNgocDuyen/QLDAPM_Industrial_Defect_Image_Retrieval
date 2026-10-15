@@ -15,6 +15,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import cv2
@@ -83,6 +84,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to phone segmentation model for auto-perspective (e.g. models/weights.pt).",
     )
     parser.add_argument(
+        "--model-id",
+        default="phone-segmentation-uiymg/1",
+        help="Roboflow model ID for auto-download (default: phone-segmentation-uiymg/1).",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="Roboflow API key for auto-download (defaults to ROBOFLOW_API_KEY from .env).",
+    )
+    parser.add_argument(
         "--method",
         choices=("clahe", "gamma", "background", "combined", "none"),
         default="clahe",
@@ -129,19 +140,45 @@ def run_cli(args: argparse.Namespace) -> Path:
         print("[Pipeline] No --input provided. Generating synthetic electronic device sample...")
         image = _make_demo_device()
 
+    try:
+        import dotenv
+        env_candidates = [
+            Path.cwd() / ".env",
+            Path(__file__).resolve().parent.parent / ".env",
+            Path(__file__).resolve().parent.parent.parent / ".env",
+        ]
+        for env_f in env_candidates:
+            if env_f.is_file():
+                dotenv.load_dotenv(dotenv_path=env_f, override=False)
+                break
+        else:
+            dotenv.load_dotenv()
+    except Exception:
+        pass
+
     should_run_yolo = args.run_yolo or args.mock
     perspective_model = args.perspective_model
     if perspective_model is None and args.auto_perspective:
-        candidates = [Path("models/weights.pt"), Path("image-processing/models/weights.pt")]
+        candidates = [
+            Path("models/weights.pt"),
+            Path("image-processing/models/weights.pt"),
+            Path(__file__).resolve().parent.parent / "models" / "weights.pt",
+        ]
         for cand in candidates:
             if cand.is_file():
                 perspective_model = str(cand)
                 break
+        else:
+            perspective_model = "models/weights.pt"
+
+    api_key = args.api_key or os.environ.get("ROBOFLOW_API_KEY")
 
     config = PipelineConfig(
         points=args.points,
         auto_perspective=args.auto_perspective,
         perspective_model_path=perspective_model,
+        perspective_model_id=args.model_id,
+        roboflow_api_key=api_key,
         illumination_method=args.method,
         run_yolo=should_run_yolo,
         mock_yolo=args.mock,
@@ -159,7 +196,7 @@ def run_cli(args: argparse.Namespace) -> Path:
         if config.perspective_model_path:
             print(f" [Step 1/5] Perspective Correction: Automatic with trained segmentation model ({config.perspective_model_path})")
         else:
-            print(" [Step 1/5] Perspective Correction: Automatic contour & corner detection (heuristic)")
+            print(" [Step 1/5] Perspective Correction: Automatic phone segmentation (auto-download or heuristic fallback)")
     else:
         print(" [Step 1/5] Perspective Correction: Skipped (use --auto-perspective or --points to enable)")
 

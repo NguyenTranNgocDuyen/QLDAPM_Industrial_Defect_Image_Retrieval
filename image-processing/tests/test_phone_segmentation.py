@@ -89,7 +89,8 @@ def test_make_mask_overlay():
     assert not np.array_equal(overlay[50, 50], img[50, 50])
 
 
-def test_phone_segmenter_missing_model():
+def test_phone_segmenter_missing_model(monkeypatch):
+    monkeypatch.setattr(PhoneSegmenter, "_resolve_api_key", lambda self: None)
     segmenter = PhoneSegmenter("non_existent_model_12345.pt")
     with pytest.raises(PhoneSegmenterError, match="not found"):
         segmenter.segment_and_correct(np.zeros((100, 100, 3), dtype=np.uint8))

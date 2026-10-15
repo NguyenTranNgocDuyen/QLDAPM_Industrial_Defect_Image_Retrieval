@@ -59,6 +59,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to trained phone segmentation model (e.g. models/weights.pt).",
     )
     parser.add_argument(
+        "--model-id",
+        default="phone-segmentation-uiymg/1",
+        help="Roboflow model ID for auto-download (default: phone-segmentation-uiymg/1).",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="Roboflow API key for auto-download (defaults to ROBOFLOW_API_KEY from .env).",
+    )
+    parser.add_argument(
         "--confidence",
         type=float,
         default=0.25,
@@ -85,10 +95,12 @@ def _write_image(path: Path, image) -> None:
 
 def run_segmentation_perspective(
     input_path: Path,
-    model_path: Path,
+    model_path: Path | str | None,
     confidence: float,
     output_dir: Path,
     refine_edges: bool = True,
+    model_id: str = "phone-segmentation-uiymg/1",
+    api_key: str | None = None,
 ) -> dict:
     from .phone_segmenter import PhoneSegmenter
 
@@ -97,7 +109,9 @@ def run_segmentation_perspective(
         raise PerspectiveCorrectionError(f"Could not decode image: {input_path}")
 
     segmenter = PhoneSegmenter(
-        model_path=model_path,
+        model_path=model_path or "models/weights.pt",
+        model_id=model_id,
+        api_key=api_key,
         confidence=confidence,
         refine_edges=refine_edges,
     )
@@ -113,6 +127,8 @@ def run_segmentation_perspective(
 
     metrics = {
         "inputPath": str(input_path),
+        "modelSource": segmenter._backend or "unknown",
+        "confidence": round(float(result.confidence), 4),
         "modelPath": str(model_path),
         "confidence": round(float(result.confidence), 4),
         "inputWidth": int(image.shape[1]),
@@ -176,13 +192,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                     model_path = cand
                     break
 
-        if model_path is not None:
+        import os
+
+        has_api_key = bool(args.api_key or os.environ.get("ROBOFLOW_API_KEY"))
+        if not has_api_key:
+            try:
+                import dotenv
+                dotenv.load_dotenv()
+                has_api_key = bool(os.environ.get("ROBOFLOW_API_KEY"))
+            except Exception:
+                pass
+
+        if model_path is not None or (args.auto and has_api_key):
             metrics = run_segmentation_perspective(
                 input_path=args.input,
                 model_path=model_path,
                 confidence=args.confidence,
                 output_dir=args.output_dir,
                 refine_edges=not args.no_refine,
+                model_id=args.model_id,
+                api_key=args.api_key,
             )
         else:
             points = args.points

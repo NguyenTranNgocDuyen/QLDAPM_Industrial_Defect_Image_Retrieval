@@ -1,6 +1,9 @@
 # Optional dependencies for phone segmentation and model-guided perspective correction
-# Install when working with models/weights.pt
+# Install when working with models/weights.pt or auto-downloading from Roboflow
 torch>=2.2.0
 torchvision>=0.17.0
 rfdetr>=1.11.0
 supervision>=0.29.0
+inference>=0.29.0
+python-dotenv>=1.0.0
+requests>=2.28.0

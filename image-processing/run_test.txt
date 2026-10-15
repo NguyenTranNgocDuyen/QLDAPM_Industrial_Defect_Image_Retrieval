@@ -1,4 +1,3 @@
-cd image-processing
 $env:PYTHONPATH="."
 python -m defect_vision.pipeline_cli `
   --input data/329k.jpeg `

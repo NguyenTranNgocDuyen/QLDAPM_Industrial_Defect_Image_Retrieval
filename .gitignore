@@ -6,6 +6,19 @@ __pycache__/
 # Generated experiment artifacts
 image-processing/outputs/
 
+# Large model weights and local caches
+*.pt
+*.pth
+*.onnx
+*.bin
+image-processing/models/*
+!image-processing/models/.gitkeep
+!image-processing/models/README.md
+
+# Environment configuration
+.env
+image-processing/.env
+
 # Java and Flutter build output
 backend/target/
 app/.dart_tool/

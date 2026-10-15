@@ -240,25 +240,36 @@ def detect_device_corners(
     min_area_ratio: float = 0.05,
     blur_ksize: int = 5,
     segmentation_model: str | None = None,
+    model_id: str = "phone-segmentation-uiymg/1",
+    api_key: str | None = None,
 ) -> PointArray | None:
     """Automatically detect the 4 corners of an electronic device quadrilateral.
 
-    If ``segmentation_model`` is provided (or if the default trained weights exist and
-    can be used), deep learning instance segmentation is used to extract precise corners.
-    Otherwise, edge detection and contour polygon approximation are used as a fallback.
+    Supports:
+    1. Local weights: If ``segmentation_model`` is provided or found locally, uses RF-DETR.
+    2. Auto-download: If API key is provided or found in environment, uses Roboflow Inference.
+    3. Fallback: Uses edge detection and contour polygon approximation.
     """
     _validate_image(image)
 
-    if segmentation_model is not None:
+    if segmentation_model is not None or api_key is not None:
         try:
-            from .phone_segmenter import detect_phone_corners_segmentation
+            from .phone_segmenter import PhoneSegmenterError, detect_phone_corners_segmentation
 
-            seg_corners = detect_phone_corners_segmentation(image, model_path=segmentation_model)
+            seg_corners = detect_phone_corners_segmentation(
+                image,
+                model_path=segmentation_model or "models/weights.pt",
+                model_id=model_id,
+                api_key=api_key,
+            )
             if seg_corners is not None:
                 return seg_corners
-            print(f"[Perspective] Warning: Segmentation model ({segmentation_model}) detected no phone. Falling back to contour detection.")
+            print("[Perspective] Notice: Segmentation model detected no device. Falling back to heuristic contour detection.")
+        except PhoneSegmenterError as pse:
+            print(f"[Perspective] Notice: Segmentation unavailable ({pse}). Falling back to heuristic contour detection.")
         except Exception as exc:
-            print(f"[Perspective] Warning: Segmentation model failed ({exc}). Falling back to contour detection.")
+            print(f"[Perspective] Warning: Segmentation model unavailable ({exc}). Falling back to heuristic contour detection.")
+
 
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image

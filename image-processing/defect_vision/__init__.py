@@ -68,6 +68,11 @@ from .phone_segmenter import (
     extract_corners_from_mask,
     make_mask_overlay,
 )
+from .download_model import (
+    download_from_url,
+    download_via_roboflow,
+    run_model_check,
+)
 from .pipeline import (
     PipelineConfig,
     PipelineError,
@@ -156,8 +161,11 @@ __all__ = [
     "annotate_detections",
     "build_detector",
     "detect_phone_corners_segmentation",
+    "download_from_url",
+    "download_via_roboflow",
     "extract_corners_from_mask",
     "make_mask_overlay",
+    "run_model_check",
 ]
 
 

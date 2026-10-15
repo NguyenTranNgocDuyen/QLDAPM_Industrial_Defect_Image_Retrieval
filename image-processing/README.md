@@ -104,6 +104,43 @@ Cài đặt runtime segmentation:
 python -m pip install -r requirements-segmentation.txt
 ```
 
+### Hỗ trợ tải tự động Model khi Clone Repository
+
+Do GitHub giới hạn kích thước file tải lên (< 100MB), file trọng số `weights.pt` (~127MB) không được commit trực tiếp vào git. Khi một thành viên mới clone source code về máy, hệ thống hỗ trợ **tự động tải model** qua Roboflow Inference:
+
+#### Bước 1: Cấu hình API Key
+Tạo file `.env` từ `.env.example`:
+```powershell
+cp .env.example .env
+```
+Điền Roboflow API Key của bạn vào `.env`:
+```env
+ROBOFLOW_API_KEY=your_roboflow_api_key_here
+ROBOFLOW_PHONE_MODEL_ID=phone-segmentation-uiymg/1
+```
+
+#### Bước 2: Tải trước model bằng script (Khuyên dùng)
+Chạy script tự động tải và cache model vào máy:
+```powershell
+python scripts/download_model.py
+```
+*(Hoặc truyền trực tiếp API key qua tham số: `python scripts/download_model.py --api-key <YOUR_KEY>`)*
+
+Kiểm tra trạng thái sẵn sàng của model:
+```powershell
+python scripts/download_model.py --check
+```
+
+Nếu bạn có link tải trực tiếp file `weights.pt` (từ Google Drive, GitHub Release, v.v.):
+```powershell
+python scripts/download_model.py --url "https://your-server.com/weights.pt"
+```
+
+#### Tự động chạy ngầm (Zero-Configuration On-the-fly)
+Nếu bạn đã cấu hình `ROBOFLOW_API_KEY` trong `.env`, bạn không cần chạy lệnh tải thủ công. Khi chạy bất kỳ lệnh nào có `--auto-perspective`, hệ thống sẽ tự động tải model từ Roboflow về cache máy tính trong lần chạy đầu tiên.
+
+---
+
 ### Cách 1: Chạy Perspective CLI với Segmentation Model
 
 ```powershell

@@ -1,58 +1,41 @@
-# Visual Defect Detection — TV1
+# Industrial Defect Image Retrieval
 
-TV1 provides a binary CNN classifier for electronic-device images:
+Hệ thống phát hiện lỗi ngoại quan trên thiết bị điện tử bằng xử lý ảnh và AI.
 
-`image → preprocessing → CNN → normal / defective`
+## Kiến trúc
 
-It deliberately does **not** locate scratches, cracks, or dents. That is TV2's YOLO responsibility.
-
-## Install
-
-The repository already contains a directory named `requirements.txt`, so TV1 dependencies are at `requirements.txt/tv1.txt`:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt\tv1.txt
+```mermaid
+flowchart LR
+    A[Flutter App] -->|multipart image| B[Spring Boot API]
+    B -->|internal HTTP request| C[Python Image Service]
+    C --> D[OpenCV Enhancement]
+    D --> E[YOLO Detection]
+    E --> C
+    C -->|detections + timings| B
+    B --> F[(Scan History)]
+    B -->|JSON result| A
 ```
 
-## Dataset layout
+- `image-processing/`: xử lý ảnh, enhancement, YOLO inference và đo thời gian.
+- `backend/`: API Spring Boot, validation, điều phối inference và lưu lịch sử.
+- `app/`: Flutter UI, upload/camera, hiển thị bounding box và lịch sử quét.
+- `contracts/`: hợp đồng dữ liệu dùng chung giữa ba thành phần.
+- `docs/`: thiết kế hệ thống và tài liệu thực nghiệm.
 
-Place actual images (not the `.gitkeep` placeholders) in this exact layout. Use image-level labels: an intact device is `normal`; an image containing visible exterior damage is `defective`.
+## Trạng thái
 
-```text
-data/
-  train/{normal,defective}/
-  val/{normal,defective}/
-  test/{normal,defective}/
-```
+Phase 1 đã xác định pipeline tổng thể, ranh giới trách nhiệm và hợp đồng kết quả phát hiện. Xem [tài liệu Phase 1](docs/phase-01-overall-pipeline.md).
 
-Keep the test split untouched until the final evaluation. A practical starting split is 70% / 15% / 15%, with balanced classes where possible.
+Phase 2 đã cài đặt Perspective Correction trên Python/OpenCV, kèm CLI, ảnh before/after, timing và unit test. Xem [tài liệu Phase 2](docs/phase-02-perspective-correction.md).
 
-## Preprocessing experiment
+Phase 3 đã cài đặt Illumination Correction với Gamma, CLAHE, background estimation và chế độ kết hợp. Xem [tài liệu Phase 3](docs/phase-03-illumination-correction.md).
 
-Create images and histogram figures for the report before deciding the final pipeline:
+Phase 4 đã cài đặt Color Space Transformation (BGR, RGB, Gray, HSV, LAB), trích xuất kênh, tính toán tương phản (Weber, Michelson, CNR) và sinh ảnh so sánh. Xem [tài liệu Phase 4](docs/phase-04-color-space.md).
 
-```powershell
-python -m preprocessing.experiment path\to\sample.jpg --output-dir outputs\preprocessing_experiment
-```
+Phase 5 đã cài đặt Data Augmentation cho thiết bị điện tử, đồng bộ tọa độ Bounding Box YOLO (Flip, Rotation, Brightness, Noise, Blur) và export nhãn YOLO. Xem [tài liệu Phase 5](docs/phase-05-image-augmentation.md).
 
-Default training uses `Resize(224×224) + Normalize`. Compare it with one filter or contrast enhancement at a time:
+Phase 6 đã cài đặt Before & After Comparison Suite với bộ chỉ số định lượng (CNR, Tenengrad, Laplacian Var, Entropy, Noise Amplification) và bảng so sánh trực quan. Xem [tài liệu Phase 6](docs/phase-06-before-after-comparison.md).
 
-```powershell
-python -m model.train --filter-name gaussian
-python -m model.train --filter-name median
-python -m model.train --contrast-enhancement
-```
+Phase tiếp theo: Phase 7 - Thiết lập mô hình YOLO Baseline từ TV2 (Mô phỏng/Tích hợp YOLO baseline pipeline).
 
-Each run writes `outputs/model/defect_classifier.pt` and `training_history.json`. Record each run's test metrics in the report comparison table.
 
-## Train, evaluate, and run UI
-
-```powershell
-python -m model.train --epochs 20
-python -m model.evaluate
-streamlit run ui\app.py
-```
-
-Evaluation writes accuracy, precision, recall, F1, a classification report, the confusion matrix, and the number of defective images incorrectly classified as normal (false negatives) to `outputs/evaluation/`.

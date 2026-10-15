@@ -1,0 +1,7 @@
+$env:PYTHONPATH="."
+python -m defect_vision.pipeline_cli `
+  --input data/329k.jpeg `
+  --auto-perspective `
+  --method clahe `
+  --mock `
+  --output-dir outputs/run-329k

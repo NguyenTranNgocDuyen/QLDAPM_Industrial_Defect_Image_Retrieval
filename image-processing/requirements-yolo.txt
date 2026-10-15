@@ -1,0 +1,4 @@
+# Optional Phase 7 runtime. Keep the core requirements lightweight for image
+# enhancement tests; install this file when the TV2 .pt model is available.
+ultralytics>=8.3,<9.0
+

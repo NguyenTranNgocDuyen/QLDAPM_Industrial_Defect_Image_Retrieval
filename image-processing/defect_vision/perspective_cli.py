@@ -12,6 +12,7 @@ import cv2
 from .perspective import (
     PerspectiveCorrectionError,
     correct_perspective,
+    detect_device_corners,
     draw_corners,
     make_before_after,
 )
@@ -37,14 +38,46 @@ def parse_points(value: str) -> list[tuple[float, float]]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Correct device perspective from four selected corners."
+        description="Correct device perspective from four selected corners or phone segmentation."
     )
     parser.add_argument("--input", required=True, type=Path, help="Input image path")
     parser.add_argument(
         "--points",
-        required=True,
         type=parse_points,
+        default=None,
         help='Four corners, for example "80,50;520,70;500,400;60,380"',
+    )
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="Automatically detect device contour corners without manual coordinates.",
+    )
+    parser.add_argument(
+        "--model",
+        type=Path,
+        default=None,
+        help="Path to trained phone segmentation model (e.g. models/weights.pt).",
+    )
+    parser.add_argument(
+        "--model-id",
+        default="phone-segmentation-uiymg/1",
+        help="Roboflow model ID for auto-download (default: phone-segmentation-uiymg/1).",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help="Roboflow API key for auto-download (defaults to ROBOFLOW_API_KEY from .env).",
+    )
+    parser.add_argument(
+        "--confidence",
+        type=float,
+        default=0.25,
+        help="Confidence threshold for segmentation model (default: 0.25).",
+    )
+    parser.add_argument(
+        "--no-refine",
+        action="store_true",
+        help="Disable sub-pixel edge-fitting corner refinement.",
     )
     parser.add_argument(
         "--output-dir",
@@ -58,6 +91,58 @@ def build_parser() -> argparse.ArgumentParser:
 def _write_image(path: Path, image) -> None:
     if not cv2.imwrite(str(path), image):
         raise OSError(f"Could not write image: {path}")
+
+
+def run_segmentation_perspective(
+    input_path: Path,
+    model_path: Path | str | None,
+    confidence: float,
+    output_dir: Path,
+    refine_edges: bool = True,
+    model_id: str = "phone-segmentation-uiymg/1",
+    api_key: str | None = None,
+) -> dict:
+    from .phone_segmenter import PhoneSegmenter
+
+    image = cv2.imread(str(input_path), cv2.IMREAD_UNCHANGED)
+    if image is None:
+        raise PerspectiveCorrectionError(f"Could not decode image: {input_path}")
+
+    segmenter = PhoneSegmenter(
+        model_path=model_path or "models/weights.pt",
+        model_id=model_id,
+        api_key=api_key,
+        confidence=confidence,
+        refine_edges=refine_edges,
+    )
+    result = segmenter.segment_and_correct(image)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    _write_image(output_dir / "01_original.png", image)
+    _write_image(output_dir / "02_mask.png", result.mask)
+    _write_image(output_dir / "03_mask_overlay.png", result.mask_overlay)
+    _write_image(output_dir / "04_selected_corners.png", result.corner_preview)
+    _write_image(output_dir / "05_corrected.png", result.perspective_result.image)
+    _write_image(output_dir / "06_before_after.png", result.before_after)
+
+    metrics = {
+        "inputPath": str(input_path),
+        "modelSource": segmenter._backend or "unknown",
+        "confidence": round(float(result.confidence), 4),
+        "modelPath": str(model_path),
+        "confidence": round(float(result.confidence), 4),
+        "inputWidth": int(image.shape[1]),
+        "inputHeight": int(image.shape[0]),
+        "outputWidth": result.perspective_result.output_width,
+        "outputHeight": result.perspective_result.output_height,
+        "timingsMs": {k: round(v, 3) for k, v in result.timings_ms.items()},
+        "orderedCorners": result.corners.round(3).tolist(),
+        "transformMatrix": result.perspective_result.transform_matrix.round(8).tolist(),
+    }
+    (output_dir / "metrics.json").write_text(
+        json.dumps(metrics, indent=2), encoding="utf-8"
+    )
+    return metrics
 
 
 def run(input_path: Path, points, output_dir: Path) -> dict:
@@ -92,10 +177,61 @@ def run(input_path: Path, points, output_dir: Path) -> dict:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     try:
-        metrics = run(args.input, args.points, args.output_dir)
-    except (PerspectiveCorrectionError, OSError) as error:
+        model_path = args.model
+        if model_path is None and args.auto:
+            # Check default model locations
+            candidates = [
+                Path("models/weights.pt"),
+                Path("image-processing/models/weights.pt"),
+            ]
+            for cand in candidates:
+                if cand.is_file():
+                    model_path = cand
+                    break
+
+        import os
+
+        has_api_key = bool(args.api_key or os.environ.get("ROBOFLOW_API_KEY"))
+        if not has_api_key:
+            try:
+                import dotenv
+                dotenv.load_dotenv()
+                has_api_key = bool(os.environ.get("ROBOFLOW_API_KEY"))
+            except Exception:
+                pass
+
+        if model_path is not None or (args.auto and has_api_key):
+            metrics = run_segmentation_perspective(
+                input_path=args.input,
+                model_path=model_path,
+                confidence=args.confidence,
+                output_dir=args.output_dir,
+                refine_edges=not args.no_refine,
+                model_id=args.model_id,
+                api_key=args.api_key,
+            )
+        else:
+            points = args.points
+            if points is None:
+                if not args.auto:
+                    raise PerspectiveCorrectionError(
+                        "Either --points, --auto, or --model is required."
+                    )
+                image = cv2.imread(str(args.input), cv2.IMREAD_UNCHANGED)
+                if image is None:
+                    raise PerspectiveCorrectionError(f"Could not decode image: {args.input}")
+                detected = detect_device_corners(image)
+                if detected is None:
+                    raise PerspectiveCorrectionError(
+                        "Could not automatically detect 4 device corners from contour."
+                    )
+                points = detected
+
+            metrics = run(args.input, points, args.output_dir)
+    except (PerspectiveCorrectionError, OSError, ValueError) as error:
         print(f"Error: {error}")
         return 1
 

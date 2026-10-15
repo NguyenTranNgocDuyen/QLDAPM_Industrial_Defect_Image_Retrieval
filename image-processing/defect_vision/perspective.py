@@ -232,3 +232,89 @@ def _resize_to_height(image: Image, target_height: int) -> Image:
     scale = target_height / image.shape[0]
     target_width = max(1, int(round(image.shape[1] * scale)))
     return cv2.resize(image, (target_width, target_height), interpolation=cv2.INTER_AREA)
+
+
+def detect_device_corners(
+    image: Image,
+    *,
+    min_area_ratio: float = 0.05,
+    blur_ksize: int = 5,
+    segmentation_model: str | None = None,
+    model_id: str = "phone-segmentation-uiymg/1",
+    api_key: str | None = None,
+) -> PointArray | None:
+    """Automatically detect the 4 corners of an electronic device quadrilateral.
+
+    Supports:
+    1. Local weights: If ``segmentation_model`` is provided or found locally, uses RF-DETR.
+    2. Auto-download: If API key is provided or found in environment, uses Roboflow Inference.
+    3. Fallback: Uses edge detection and contour polygon approximation.
+    """
+    _validate_image(image)
+
+    if segmentation_model is not None or api_key is not None:
+        try:
+            from .phone_segmenter import PhoneSegmenterError, detect_phone_corners_segmentation
+
+            seg_corners = detect_phone_corners_segmentation(
+                image,
+                model_path=segmentation_model or "models/weights.pt",
+                model_id=model_id,
+                api_key=api_key,
+            )
+            if seg_corners is not None:
+                return seg_corners
+            print("[Perspective] Notice: Segmentation model detected no device. Falling back to heuristic contour detection.")
+        except PhoneSegmenterError as pse:
+            print(f"[Perspective] Notice: Segmentation unavailable ({pse}). Falling back to heuristic contour detection.")
+        except Exception as exc:
+            print(f"[Perspective] Warning: Segmentation model unavailable ({exc}). Falling back to heuristic contour detection.")
+
+
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    h, w = gray.shape[:2]
+    total_area = float(h * w)
+    min_contour_area = total_area * min_area_ratio
+
+    ksize = blur_ksize if blur_ksize % 2 == 1 else blur_ksize + 1
+    blurred = cv2.GaussianBlur(gray, (ksize, ksize), 0)
+
+    candidate_quads: list[tuple[float, np.ndarray]] = []
+
+    # Strategy 1: Multi-threshold Canny edge detection
+    edges = cv2.Canny(blurred, 40, 140)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    dilated = cv2.dilate(edges, kernel, iterations=1)
+    contours_a, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Strategy 2: Otsu thresholding
+    _, thresh_otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    contours_b, _ = cv2.findContours(thresh_otsu, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    all_contours = list(contours_a) + list(contours_b)
+    all_contours = sorted(all_contours, key=cv2.contourArea, reverse=True)
+
+    for c in all_contours:
+        area = cv2.contourArea(c)
+        if area < min_contour_area or area > total_area * 0.98:
+            continue
+
+        peri = cv2.arcLength(c, True)
+        for factor in (0.02, 0.03, 0.015, 0.04):
+            approx = cv2.approxPolyDP(c, factor * peri, True)
+            if len(approx) == 4 and cv2.isContourConvex(approx):
+                candidate_quads.append((area, approx.reshape(-1, 2).astype(np.float32)))
+                break
+
+    if candidate_quads:
+        candidate_quads.sort(key=lambda item: item[0], reverse=True)
+        best_corners = candidate_quads[0][1]
+        try:
+            return order_corners(best_corners)
+        except Exception:
+            pass
+
+    return None
+
+

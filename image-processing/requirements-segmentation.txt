@@ -1,0 +1,6 @@
+# Optional dependencies for phone segmentation and model-guided perspective correction
+# Install when working with models/weights.pt
+torch>=2.2.0
+torchvision>=0.17.0
+rfdetr>=1.11.0
+supervision>=0.29.0

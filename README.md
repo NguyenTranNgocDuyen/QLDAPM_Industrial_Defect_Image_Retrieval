@@ -36,6 +36,8 @@ Phase 5 đã cài đặt Data Augmentation cho thiết bị điện tử, đồn
 
 Phase 6 đã cài đặt Before & After Comparison Suite với bộ chỉ số định lượng (CNR, Tenengrad, Laplacian Var, Entropy, Noise Amplification) và bảng so sánh trực quan. Xem [tài liệu Phase 6](docs/phase-06-before-after-comparison.md).
 
-Phase tiếp theo: Phase 7 - Thiết lập mô hình YOLO Baseline từ TV2 (Mô phỏng/Tích hợp YOLO baseline pipeline).
+Phase 7 đã thiết lập YOLO baseline pipeline: adapter Ultralytics cho trọng số TV2, mock detector chạy được không cần model, postprocess bounding box, ảnh annotated và timing theo contract. Xem [tài liệu Phase 7](docs/phase-07-yolo-baseline.md).
+
+Việc còn lại sau Phase 7 là nhận dataset/trọng số TV2 để benchmark accuracy, calibration và tích hợp inference thật vào backend/API.
 
 

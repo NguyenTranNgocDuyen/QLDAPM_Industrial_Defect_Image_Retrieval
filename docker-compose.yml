@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: industrial-defect-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-defect_inspection_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      # Persistent volume for PostgreSQL data
+      - postgres_data:/var/lib/postgresql/data
+      # SQL initialization scripts mounted to docker-entrypoint-initdb.d
+      - ./docker/postgres/init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-defect_inspection_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - defect-network
+
+volumes:
+  postgres_data:
+    name: defect_postgres_data
+
+networks:
+  defect-network:
+    name: defect-network
+    driver: bridge

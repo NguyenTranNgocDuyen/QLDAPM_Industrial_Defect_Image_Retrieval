@@ -1,5 +1,8 @@
-import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../core/services/inspection_api_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import 'result_screen.dart';
@@ -7,11 +10,13 @@ import 'result_screen.dart';
 class AnalysisScreen extends StatefulWidget {
   final String deviceName;
   final String deviceImei;
+  final File imageFile;
 
   const AnalysisScreen({
     super.key,
     required this.deviceName,
     required this.deviceImei,
+    required this.imageFile,
   });
 
   @override
@@ -22,17 +27,16 @@ class _AnalysisScreenState extends State<AnalysisScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _scanAnimController;
   int _currentPhaseIndex = 0;
-  double _overallProgress = 0.08;
+  double _overallProgress = 0.04;
+  String? _errorMessage;
 
   final List<String> _scanPhases = [
-    'Khử nhiễu quang học & cân bằng phơi sáng',
-    'Phân đoạn viền máy & bề mặt kính (Segmentation)',
-    'Quét micro-crack & xước dăm bằng Kernel tích chập',
-    'Đo lường kích thước & phân loại cấp độ lỗi',
-    'Tổng hợp ma trận phân hạng ngoại quan'
+    'Tải ảnh và kiểm tra kết nối server',
+    'Khử nhiễu quang học — Gaussian Filter (k=5)',
+    'Resize và Normalize ảnh (224×224)',
+    'Chạy DefectCNN — 3 Conv Blocks + Classifier',
+    'Sigmoid → Phân loại Normal / Defective',
   ];
-
-  Timer? _progressTimer;
 
   @override
   void initState() {
@@ -42,38 +46,132 @@ class _AnalysisScreenState extends State<AnalysisScreen>
       duration: const Duration(milliseconds: 1400),
     )..repeat(reverse: true);
 
-    _startSimulatedPipeline();
+    _runRealInference();
   }
 
-  void _startSimulatedPipeline() {
-    _progressTimer = Timer.periodic(const Duration(milliseconds: 600), (timer) {
-      if (!mounted) return;
-      setState(() {
-        _overallProgress += 0.22;
-        if (_overallProgress >= 1.0) {
-          _overallProgress = 1.0;
-          timer.cancel();
-          Future.delayed(const Duration(milliseconds: 400), () {
-            if (!mounted) return;
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => ResultScreen(
-                  deviceName: widget.deviceName,
-                  deviceImei: widget.deviceImei,
-                ),
-              ),
-            );
-          });
-        } else {
-          _currentPhaseIndex = (_overallProgress * (_scanPhases.length - 1)).toInt();
-        }
-      });
+  /// Gọi FastAPI thật; fallback sang mock nếu đang ở kDebugMode và server không có.
+  Future<void> _runRealInference() async {
+    // Kiểm tra server health
+    _setPhase(0);
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    final serverAlive = await InspectionApiService.isServerAlive();
+
+    if (!serverAlive) {
+      if (kDebugMode) {
+        // Debug mode: dùng mock để test UI khi không có server
+        debugPrint('[AnalysisScreen] Server offline — dùng mock data (kDebugMode)');
+        await _runMockPipeline();
+        return;
+      }
+      // Production: báo lỗi
+      if (mounted) {
+        setState(() => _errorMessage =
+            'Không kết nối được model server.\n'
+            'Hãy chạy:\n  uvicorn ui.local_api:app --port 8000');
+        _showServerErrorSnackbar();
+      }
+      return;
+    }
+
+    // Tiến trình animation giả cho các bước preprocessing (UX)
+    _setPhase(1);
+    await Future.delayed(const Duration(milliseconds: 500));
+    _setPhase(2);
+    await Future.delayed(const Duration(milliseconds: 400));
+    _setPhase(3);
+
+    // Gọi API thật
+    CnnResult result;
+    try {
+      result = await InspectionApiService.predict(widget.imageFile);
+    } on InspectionApiException catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = e.message);
+        _showServerErrorSnackbar(message: e.message);
+      }
+      return;
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Lỗi không xác định: $e');
+        _showServerErrorSnackbar(message: 'Lỗi không xác định: $e');
+      }
+      return;
+    }
+
+    _setPhase(4);
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    if (!mounted) return;
+    setState(() => _overallProgress = 1.0);
+    await Future.delayed(const Duration(milliseconds: 350));
+
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => ResultScreen(
+          deviceName: widget.deviceName,
+          deviceImei: widget.deviceImei,
+          cnnResult: result,
+          imageFile: widget.imageFile,
+        ),
+      ),
+    );
+  }
+
+  void _setPhase(int index) {
+    if (!mounted) return;
+    setState(() {
+      _currentPhaseIndex = index;
+      _overallProgress = (index + 1) / (_scanPhases.length + 1);
     });
+  }
+
+  /// Mock pipeline cho kDebugMode (test UI tanpa server).
+  Future<void> _runMockPipeline() async {
+    for (int i = 0; i < _scanPhases.length; i++) {
+      _setPhase(i);
+      await Future.delayed(const Duration(milliseconds: 600));
+    }
+    if (!mounted) return;
+    setState(() => _overallProgress = 1.0);
+    await Future.delayed(const Duration(milliseconds: 350));
+
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => ResultScreen(
+          deviceName: widget.deviceName,
+          deviceImei: widget.deviceImei,
+          // ignore: avoid_redundant_argument_values
+          cnnResult: null, // null = mock mode
+          imageFile: widget.imageFile,
+        ),
+      ),
+    );
+  }
+
+  void _showServerErrorSnackbar({String? message}) {
+    final msg = message ??
+        'Không kết nối được model server. '
+            'Hãy chạy: uvicorn ui.local_api:app --port 8000';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontSize: 13)),
+        backgroundColor: AppColors.defectCritical,
+        duration: const Duration(seconds: 6),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'OK',
+          textColor: Colors.white,
+          onPressed: () {},
+        ),
+      ),
+    );
   }
 
   @override
   void dispose() {
-    _progressTimer?.cancel();
     _scanAnimController.dispose();
     super.dispose();
   }
@@ -95,22 +193,35 @@ class _AnalysisScreenState extends State<AnalysisScreen>
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('KHỐI PHÂN TÍCH QUANG HỌC', style: AppTypography.labelCaps),
+                      Text('KHỐI PHÂN TÍCH QUANG HỌC',
+                          style: AppTypography.labelCaps),
                       const SizedBox(height: 4),
-                      Text(widget.deviceName, style: AppTypography.titleMedium),
+                      Text(widget.deviceName,
+                          style: AppTypography.titleMedium),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.amberMuted,
+                      color: _errorMessage != null
+                          ? AppColors.defectCritical.withOpacity(0.15)
+                          : AppColors.amberMuted,
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.amberAccent, width: 1),
+                      border: Border.all(
+                        color: _errorMessage != null
+                            ? AppColors.defectCritical
+                            : AppColors.amberAccent,
+                        width: 1,
+                      ),
                     ),
                     child: Text(
-                      'PROCESSING',
+                      _errorMessage != null ? 'ERROR' : 'PROCESSING',
                       style: AppTypography.monoSmall.copyWith(
-                        color: AppColors.amberAccent,
+                        color: _errorMessage != null
+                            ? AppColors.defectCritical
+                            : AppColors.amberAccent,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -119,7 +230,43 @@ class _AnalysisScreenState extends State<AnalysisScreen>
               ),
               const SizedBox(height: 24),
 
-              // Vùng quét giả lập quét theo từng khu vực (Sector-by-sector scanner)
+              // Error banner
+              if (_errorMessage != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: AppColors.defectCritical.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.defectCritical),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.error_outline,
+                              color: AppColors.defectCritical, size: 16),
+                          SizedBox(width: 8),
+                          Text('Lỗi kết nối server',
+                              style: TextStyle(
+                                  color: AppColors.defectCritical,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _errorMessage!,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Vùng quét với image preview
               Expanded(
                 flex: 3,
                 child: Container(
@@ -131,6 +278,20 @@ class _AnalysisScreenState extends State<AnalysisScreen>
                   ),
                   child: Stack(
                     children: [
+                      // Ảnh thật đang được phân tích (mờ nhẹ)
+                      Positioned.fill(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Opacity(
+                            opacity: 0.35,
+                            child: Image.file(
+                              widget.imageFile,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ),
+
                       // Lưới tọa độ ma trận
                       Positioned.fill(
                         child: CustomPaint(
@@ -139,31 +300,33 @@ class _AnalysisScreenState extends State<AnalysisScreen>
                       ),
 
                       // Tia laser quét dọc (Scanline animation)
-                      AnimatedBuilder(
-                        animation: _scanAnimController,
-                        builder: (context, child) {
-                          return Positioned(
-                            top: _scanAnimController.value * 280,
-                            left: 0,
-                            right: 0,
-                            child: Container(
-                              height: 2,
-                              decoration: BoxDecoration(
-                                color: AppColors.amberAccent,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.amberAccent.withOpacity(0.6),
-                                    blurRadius: 6,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
+                      if (_errorMessage == null)
+                        AnimatedBuilder(
+                          animation: _scanAnimController,
+                          builder: (context, child) {
+                            return Positioned(
+                              top: _scanAnimController.value * 280,
+                              left: 0,
+                              right: 0,
+                              child: Container(
+                                height: 2,
+                                decoration: BoxDecoration(
+                                  color: AppColors.amberAccent,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.amberAccent
+                                          .withOpacity(0.6),
+                                      blurRadius: 6,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                            );
+                          },
+                        ),
 
-                      // Thông số thời gian thực đè lên màn hình quét
+                      // Thông số thời gian thực
                       Positioned(
                         bottom: 12,
                         left: 14,
@@ -172,7 +335,7 @@ class _AnalysisScreenState extends State<AnalysisScreen>
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'SECTOR: #0${_currentPhaseIndex + 1} / REGION_SCAN',
+                              'SECTOR: #0${_currentPhaseIndex + 1} / CNN_SCAN',
                               style: AppTypography.monoSmall,
                             ),
                             Text(
@@ -192,7 +355,8 @@ class _AnalysisScreenState extends State<AnalysisScreen>
               const SizedBox(height: 24),
 
               // Tiến trình các bước
-              Text('TIẾN TRÌNH THỰC THI THUẬT TOÁN', style: AppTypography.labelCaps),
+              Text('TIẾN TRÌNH THUẬT TOÁN CNN',
+                  style: AppTypography.labelCaps),
               const SizedBox(height: 12),
 
               Expanded(
@@ -200,34 +364,51 @@ class _AnalysisScreenState extends State<AnalysisScreen>
                 child: ListView.separated(
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: _scanPhases.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: 8),
                   itemBuilder: (context, idx) {
                     final isDone = idx < _currentPhaseIndex;
-                    final isRunning = idx == _currentPhaseIndex;
+                    final isRunning = idx == _currentPhaseIndex &&
+                        _errorMessage == null;
+                    final isError = idx == _currentPhaseIndex &&
+                        _errorMessage != null;
 
                     return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: isRunning
                             ? AppColors.darkSurfaceElevated
                             : AppColors.darkSurface,
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(
-                          color: isRunning
-                              ? AppColors.amberAccent
-                              : (isDone ? AppColors.statusPass : AppColors.darkBorderSubtle),
+                          color: isError
+                              ? AppColors.defectCritical
+                              : isRunning
+                                  ? AppColors.amberAccent
+                                  : (isDone
+                                      ? AppColors.statusPass
+                                      : AppColors.darkBorderSubtle),
                         ),
                       ),
                       child: Row(
                         children: [
                           Icon(
-                            isDone
-                                ? Icons.check_circle_outline
-                                : (isRunning ? Icons.radar : Icons.radio_button_unchecked),
+                            isError
+                                ? Icons.error_outline
+                                : isDone
+                                    ? Icons.check_circle_outline
+                                    : (isRunning
+                                        ? Icons.radar
+                                        : Icons.radio_button_unchecked),
                             size: 16,
-                            color: isDone
-                                ? AppColors.statusPass
-                                : (isRunning ? AppColors.amberAccent : AppColors.textMutedDark),
+                            color: isError
+                                ? AppColors.defectCritical
+                                : isDone
+                                    ? AppColors.statusPass
+                                    : (isRunning
+                                        ? AppColors.amberAccent
+                                        : AppColors.textMutedDark),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -235,11 +416,13 @@ class _AnalysisScreenState extends State<AnalysisScreen>
                               _scanPhases[idx],
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isRunning
-                                    ? Colors.white
-                                    : (isDone
-                                        ? AppColors.textSecondaryDark
-                                        : AppColors.textMutedDark),
+                                color: isError
+                                    ? AppColors.defectCritical
+                                    : isRunning
+                                        ? Colors.white
+                                        : (isDone
+                                            ? AppColors.textSecondaryDark
+                                            : AppColors.textMutedDark),
                               ),
                             ),
                           ),

@@ -1,8 +1,15 @@
-numpy
-opencv-python
-matplotlib
-Pillow
-torch
-torchvision
-scikit-learn
-streamlit
+# TV1: reproducible preprocessing, CNN training/evaluation, local API and tests.
+# Install from the repository root: python -m pip install -r requirements.txt/tv1.txt
+numpy==2.2.5
+opencv-python==4.11.0.86
+Pillow==11.2.1
+torch==2.6.0
+torchvision==0.21.0
+scikit-learn==1.6.1
+matplotlib==3.10.3
+streamlit==1.45.1
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+python-multipart==0.0.20
+pytest==8.3.5
+httpx==0.28.1

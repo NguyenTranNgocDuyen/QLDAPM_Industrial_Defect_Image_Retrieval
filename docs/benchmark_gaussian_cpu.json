@@ -1,0 +1,12 @@
+{
+  "checkpoint": "outputs\\model_gaussian\\defect_classifier.pt",
+  "sample": "data\\test\\defective\\crazing_10.jpg",
+  "device": "cpu",
+  "warmup_runs": 10,
+  "measured_runs": 30,
+  "inference": {
+    "p50_ms": 318.062,
+    "p95_ms": 412.834,
+    "mean_ms": 294.811
+  }
+}

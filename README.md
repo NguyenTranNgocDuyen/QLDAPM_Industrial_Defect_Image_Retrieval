@@ -1,41 +1,33 @@
-# Industrial Defect Image Retrieval
+# Visual Defect Detection
 
-Hệ thống phát hiện lỗi ngoại quan trên thiết bị điện tử bằng xử lý ảnh và AI.
+Hệ thống phát hiện lỗi ngoại quan thiết bị điện tử. Repository gồm Flutter app,
+Spring Boot backend, phần xử lý ảnh TV3, YOLO TV2 và CNN binary classifier TV1.
 
-## Kiến trúc
+## Trạng thái TV1 — CNN Normal / Defective
 
-```mermaid
-flowchart LR
-    A[Flutter App] -->|multipart image| B[Spring Boot API]
-    B -->|internal HTTP request| C[Python Image Service]
-    C --> D[OpenCV Enhancement]
-    D --> E[YOLO Detection]
-    E --> C
-    C -->|detections + timings| B
-    B --> F[(Scan History)]
-    B -->|JSON result| A
+TV1 đã có pipeline tái lập: CLAHE thật, chuẩn hoá mean/std từ train, augmentation
+chỉ train, `StepLR`, calibration threshold validation, checkpoint tương thích ngược,
+FastAPI local và test. Hướng dẫn đầy đủ cùng kết quả benchmark ở
+[Phase 7](docs/phase-07-cnn-classification.md).
+
+```bash
+python -m pip install -r requirements.txt/tv1.txt
+python scripts/audit_dataset.py
+python -m model.evaluate --checkpoint outputs/model_gaussian/defect_classifier.pt --data-dir data --output-dir outputs/evaluation
+python -m scripts.benchmark_inference --checkpoint outputs/model_gaussian/defect_classifier.pt --runs 30
 ```
 
-- `image-processing/`: xử lý ảnh, enhancement, YOLO inference và đo thời gian.
-- `backend/`: API Spring Boot, validation, điều phối inference và lưu lịch sử.
-- `app/`: Flutter UI, upload/camera, hiển thị bounding box và lịch sử quét.
-- `contracts/`: hợp đồng dữ liệu dùng chung giữa ba thành phần.
-- `docs/`: thiết kế hệ thống và tài liệu thực nghiệm.
+Lưu ý: `requirements.txt` là thư mục đã tồn tại; dependency TV1 nằm tại
+`requirements.txt/tv1.txt`. Audit SHA-256 hiện phát hiện một ảnh duplicate xuyên
+train/test, do đó cần xử lý split trước khi công bố metric cuối.
 
-## Trạng thái
+## Thành phần
 
-Phase 1 đã xác định pipeline tổng thể, ranh giới trách nhiệm và hợp đồng kết quả phát hiện. Xem [tài liệu Phase 1](docs/phase-01-overall-pipeline.md).
+- `preprocessing/`, `model/`, `ui/local_api.py`: phần TV1.
+- `image-processing/`: pipeline TV3.
+- `backend/`: Spring Boot orchestration.
+- `app/`: Flutter client.
+- `contracts/`: hợp đồng kết quả detection dùng chung.
 
-Phase 2 đã cài đặt Perspective Correction trên Python/OpenCV, kèm CLI, ảnh before/after, timing và unit test. Xem [tài liệu Phase 2](docs/phase-02-perspective-correction.md).
-
-Phase 3 đã cài đặt Illumination Correction với Gamma, CLAHE, background estimation và chế độ kết hợp. Xem [tài liệu Phase 3](docs/phase-03-illumination-correction.md).
-
-Phase 4 đã cài đặt Color Space Transformation (BGR, RGB, Gray, HSV, LAB), trích xuất kênh, tính toán tương phản (Weber, Michelson, CNR) và sinh ảnh so sánh. Xem [tài liệu Phase 4](docs/phase-04-color-space.md).
-
-Phase 5 đã cài đặt Data Augmentation cho thiết bị điện tử, đồng bộ tọa độ Bounding Box YOLO (Flip, Rotation, Brightness, Noise, Blur) và export nhãn YOLO. Xem [tài liệu Phase 5](docs/phase-05-image-augmentation.md).
-
-Phase 6 đã cài đặt Before & After Comparison Suite với bộ chỉ số định lượng (CNR, Tenengrad, Laplacian Var, Entropy, Noise Amplification) và bảng so sánh trực quan. Xem [tài liệu Phase 6](docs/phase-06-before-after-comparison.md).
-
-Phase tiếp theo: Phase 7 - Thiết lập mô hình YOLO Baseline từ TV2 (Mô phỏng/Tích hợp YOLO baseline pipeline).
-
-
+TV1 chỉ trả kết quả classifier toàn ảnh. Bounding box và nhãn lỗi chi tiết đợi
+YOLO của TV2; các hiệu chỉnh perspective/illumination tiếp tục thuộc TV3.

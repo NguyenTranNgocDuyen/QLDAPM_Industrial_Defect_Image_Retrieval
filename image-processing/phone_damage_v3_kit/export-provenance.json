@@ -1,0 +1,15 @@
+{
+  "model_sha256": "a8dce48c3fd0c260e7bb2fa167e1f148eeffe46a9b01c68733bbd168a280ede3",
+  "source_modules_sha256": {
+    "damage_roi_engine.py": "11b0a62905f9ed6c3334305f0e4b2a07a426ec06c2419cafc7e5d7257e696948",
+    "damage_roi_inference.py": "fc9588c641de1a1afa785627eadc7185141dba891177fa82f5966fe657d85507",
+    "phone_body_roi.py": "0701a47c51680c200852dc297544bbd818da33de21caa9e3ad9fea4092c2350a",
+    "phone_damage_roi.py": "a3e3b8c9ea5db63f2020d2210f7928a1744ed466925186092b8014f208d5fed9",
+    "train_damage_roi.py": "6a0d3de1b4d545d12f888f0df7cf443f6a436509b5857079a474621d208e9710",
+    "phone_semantic.py": "dbd9d31eab4bb7a3904e21368a947f36b60c6e57d952b876fdf729c4c103f4cc",
+    "phone_data.py": "3eb41a91f2ffc68575f7da162806d8a888b32c34a3c2fdf03c83cff8a89ec673"
+  },
+  "transformation": "Only internal imports made package-relative.",
+  "phone_detector_included": false,
+  "severity_implemented": false
+}

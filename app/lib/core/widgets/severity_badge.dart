@@ -39,9 +39,9 @@ class SeverityBadge extends StatelessWidget {
         vertical: compact ? 2 : 4,
       ),
       decoration: BoxDecoration(
-        color: badgeColor.withOpacity(0.12),
+        color: badgeColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: badgeColor.withOpacity(0.85), width: 1),
+        border: Border.all(color: badgeColor.withValues(alpha: 0.85), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

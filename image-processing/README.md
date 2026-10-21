@@ -1,5 +1,9 @@
 # Python Image Processing
 
+Phân cấp mặc định hiện tại: [severity v6, diện tích 2%/5% và bề rộng 5%/8%](../docs/SEVERITY_AREA_WIDTH.md).
+
+Luồng phone damage v3 thật (worker, backend, Flutter, severity hình học chưa kiểm chứng): xem [hướng dẫn triển khai và kiểm thử](../docs/PHONE_DAMAGE_V3.md). Luồng này dùng checkpoint local trong `phone_damage_v3_kit/phone_damage_v3/weights`, dùng chung segmentation và chạy damage trên RGB gốc trước mọi warp/tăng sáng. Các ví dụ YOLO/Roboflow bên dưới là công cụ baseline cũ, không phải loader của v3.
+
 Phạm vi module:
 
 - Xử lý ảnh bằng OpenCV.
@@ -177,6 +181,33 @@ cv2.imwrite("phone_corrected.png", result.perspective_result.image)
 ```
 
 ## Preprocessing Pipeline trọn gói (End-to-End)
+
+### Kiểm tra khung cắt từ mask đã lưu
+
+Phần lấy góc giữ cách khớp cạnh trong dải 8 pixel làm bước đầu tiên. Nếu tứ giác
+giữ được dưới 98% vùng điện thoại trong mask, thuật toán thử khớp lại với dải tìm
+kiếm bằng 10% cạnh ngắn (tối thiểu 8 pixel). Các cạnh vốn làm mất không quá 1%
+diện tích mask vẫn được giữ nguyên. Kết quả mới chỉ được nhận khi độ bao phủ tăng
+ít nhất 0,5 điểm phần trăm, phần nền ngoài mask chiếm không quá 3% khung mới,
+diện tích khung tăng không quá 20% và mỗi góc dịch không quá 20% cạnh ngắn.
+
+So sánh cách cũ và cách mới trên cùng ảnh/mask, không cần tải hoặc chạy model:
+
+```powershell
+python scripts/compare_perspective.py --case 329k data/329k.jpeg outputs/test_seg/mask_329k.png
+```
+
+Có thể truyền nhiều `--case NAME IMAGE MASK`. Kết quả nằm trong
+`outputs/perspective-audit/`: ảnh đối chiếu khung cắt, ảnh đã nắn theo từng cách
+và `comparison.json`. Chỉ số coverage đo phần mask được giữ lại trong khung,
+không phải độ chính xác model hay độ bao phủ thân máy theo nhãn chuẩn.
+Nếu mask bỏ sót viền hoặc điện thoại vượt khỏi ảnh gốc, bước này không khôi phục
+được phần thông tin bị thiếu.
+
+Khi gọi Python, dùng `extract_corners_from_mask(..., adaptive_refinement=False)`
+để tái lập cách khớp cạnh cũ. `refine_edges=False` vẫn tắt cả hai lượt khớp cạnh.
+
+### Chạy pipeline
 
 Chạy toàn bộ chuỗi tiền xử lý (Perspective với Segmentation, Illumination, Color Space, Before/After evaluation, YOLO) chỉ với một lệnh:
 

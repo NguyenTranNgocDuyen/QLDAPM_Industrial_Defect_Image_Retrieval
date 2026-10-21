@@ -71,8 +71,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--confidence",
         type=float,
-        default=0.25,
-        help="Confidence threshold for segmentation model (default: 0.25).",
+        default=0.3,
+        help="Confidence threshold for segmentation model (protocol default: 0.3).",
     )
     parser.add_argument(
         "--no-refine",
@@ -102,14 +102,14 @@ def run_segmentation_perspective(
     model_id: str = "phone-segmentation-uiymg/1",
     api_key: str | None = None,
 ) -> dict:
-    from .phone_segmenter import PhoneSegmenter
+    from .phone_segmenter import DEFAULT_PHONE_MODEL, PhoneSegmenter
 
     image = cv2.imread(str(input_path), cv2.IMREAD_UNCHANGED)
     if image is None:
         raise PerspectiveCorrectionError(f"Could not decode image: {input_path}")
 
     segmenter = PhoneSegmenter(
-        model_path=model_path or "models/weights.pt",
+        model_path=model_path or DEFAULT_PHONE_MODEL,
         model_id=model_id,
         api_key=api_key,
         confidence=confidence,
@@ -182,15 +182,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         model_path = args.model
         if model_path is None and args.auto:
-            # Check default model locations
-            candidates = [
-                Path("models/weights.pt"),
-                Path("image-processing/models/weights.pt"),
-            ]
-            for cand in candidates:
-                if cand.is_file():
-                    model_path = cand
-                    break
+            from .phone_segmenter import DEFAULT_PHONE_MODEL
+            model_path = DEFAULT_PHONE_MODEL
 
         import os
 

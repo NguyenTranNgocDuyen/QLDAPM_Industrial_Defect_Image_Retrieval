@@ -1,0 +1,10 @@
+{
+  "version": "corner-expansion-v1-unvalidated",
+  "heuristic_unvalidated": true,
+  "min_coverage": 0.98,
+  "target_coverage": 0.985,
+  "max_edge_offset_ratio": 0.10,
+  "max_corner_displacement_ratio": 0.20,
+  "max_area_growth": 1.25,
+  "max_background_ratio": 0.08
+}

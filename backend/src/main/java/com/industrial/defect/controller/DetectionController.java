@@ -26,8 +26,12 @@ public class DetectionController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<DetectionResponseDto> uploadAndDetect(
             @RequestParam("image") MultipartFile image,
-            @RequestParam(value = "deviceInfo", required = false) String deviceInfo) {
-        DetectionResponseDto response = scanService.processImageUpload(image, deviceInfo);
+            @RequestParam(value = "deviceInfo", required = false) String deviceInfo,
+            @RequestParam(value = "surface", defaultValue = "unknown") String surface,
+            @RequestParam(value = "surfaceAspectRatio", required = false) Double aspect,
+            @RequestParam(value = "fullSurfaceConfirmed", defaultValue = "false") boolean complete,
+            @RequestParam(value = "sessionId", required = false) UUID sessionId) {
+        DetectionResponseDto response = scanService.processImageUpload(image, deviceInfo, surface, aspect, complete, sessionId);
         return ResponseEntity.ok(response);
     }
 

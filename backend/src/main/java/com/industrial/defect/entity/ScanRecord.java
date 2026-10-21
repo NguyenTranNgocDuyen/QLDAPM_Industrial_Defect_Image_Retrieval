@@ -39,8 +39,20 @@ public class ScanRecord {
     @Column(name = "coordinate_space", length = 20, nullable = false)
     private String coordinateSpace = "processed";
 
-    @Column(name = "has_defect", nullable = false)
+    @Column(name = "has_defect")
     private Boolean hasDefect = false;
+
+    @Column(name = "analysis_json", columnDefinition = "TEXT")
+    private String analysisJson;
+
+    public String getAnalysisJson() { return analysisJson; }
+    public void setAnalysisJson(String analysisJson) { this.analysisJson = analysisJson; }
+
+    @Column(name = "session_id")
+    private UUID sessionId;
+
+    public UUID getSessionId() { return sessionId; }
+    public void setSessionId(UUID sessionId) { this.sessionId = sessionId; }
 
     @Column(name = "success", nullable = false)
     private Boolean success = true;

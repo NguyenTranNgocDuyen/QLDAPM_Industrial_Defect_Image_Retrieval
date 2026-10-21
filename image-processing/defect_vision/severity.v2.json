@@ -1,0 +1,15 @@
+{
+  "version": "geometry-v2-image-estimate-unvalidated",
+  "heuristic_unvalidated": true,
+  "area_ratio": {"moderate": 0.005, "severe": 0.03},
+  "skeleton_length_ratio": {"moderate": 0.20, "severe": 0.50},
+  "width_ratio": {"moderate": 0.005, "severe": 0.015},
+  "image_geometry": {
+    "enabled": true,
+    "min_body_inside_quad_ratio": 0.98,
+    "min_quad_fill_ratio": 0.75,
+    "min_convex_fill_ratio": 0.90,
+    "max_opposite_edge_ratio": 1.8,
+    "min_short_side_px": 32
+  }
+}

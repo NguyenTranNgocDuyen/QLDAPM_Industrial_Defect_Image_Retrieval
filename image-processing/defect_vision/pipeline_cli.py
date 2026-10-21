@@ -159,17 +159,8 @@ def run_cli(args: argparse.Namespace) -> Path:
     should_run_yolo = args.run_yolo or args.mock
     perspective_model = args.perspective_model
     if perspective_model is None and args.auto_perspective:
-        candidates = [
-            Path("models/weights.pt"),
-            Path("image-processing/models/weights.pt"),
-            Path(__file__).resolve().parent.parent / "models" / "weights.pt",
-        ]
-        for cand in candidates:
-            if cand.is_file():
-                perspective_model = str(cand)
-                break
-        else:
-            perspective_model = "models/weights.pt"
+        from .phone_segmenter import DEFAULT_PHONE_MODEL
+        perspective_model = str(DEFAULT_PHONE_MODEL)
 
     api_key = args.api_key or os.environ.get("ROBOFLOW_API_KEY")
 

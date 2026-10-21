@@ -2,6 +2,8 @@
 
 Module backend cung cấp REST API điều phối quy trình kiểm tra lỗi ngoại quan, lưu trữ lịch sử quét (scans), bounding box phát hiện (detections), danh mục lỗi (defect types) và kết quả truy vấn ảnh tương đồng (image retrieval).
 
+Luồng upload hiện gọi worker phone damage v3 thật, lưu JSON hình học và proxy mask/overlay PNG. Xem [hướng dẫn chạy và kiểm thử](../docs/PHONE_DAMAGE_V3.md). `hasDefect` có thể null khi không đủ bằng chứng; không trả dữ liệu mô phỏng.
+
 ---
 
 ## 1. Kiến trúc Database & Entities

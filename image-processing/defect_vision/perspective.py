@@ -112,6 +112,7 @@ def correct_perspective(
     points: Iterable[Iterable[float]],
     *,
     interpolation: int = cv2.INTER_LINEAR,
+    output_size: tuple[int, int] | None = None,
 ) -> PerspectiveResult:
     """Rectify the quadrilateral selected around an electronic device.
 
@@ -122,6 +123,11 @@ def correct_perspective(
     corners = order_corners(points)
     _validate_corner_bounds(corners, image)
     output_width, output_height = _output_size(corners)
+    if output_size is not None:
+        output_width, output_height = output_size
+        if (not all(isinstance(x, int) and x >= 2 for x in output_size)
+                or max(output_size) > 20000):
+            raise PerspectiveCorrectionError('Invalid target surface dimensions.')
 
     destination = np.array(
         [
@@ -254,11 +260,11 @@ def detect_device_corners(
 
     if segmentation_model is not None or api_key is not None:
         try:
-            from .phone_segmenter import PhoneSegmenterError, detect_phone_corners_segmentation
+            from .phone_segmenter import DEFAULT_PHONE_MODEL, PhoneSegmenterError, detect_phone_corners_segmentation
 
             seg_corners = detect_phone_corners_segmentation(
                 image,
-                model_path=segmentation_model or "models/weights.pt",
+                model_path=segmentation_model or DEFAULT_PHONE_MODEL,
                 model_id=model_id,
                 api_key=api_key,
             )

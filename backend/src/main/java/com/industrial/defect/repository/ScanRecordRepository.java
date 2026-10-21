@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,4 +21,13 @@ public interface ScanRecordRepository extends JpaRepository<ScanRecord, UUID> {
     Page<ScanRecord> findByHasDefect(Boolean hasDefect, Pageable pageable);
 
     long countByHasDefect(Boolean hasDefect);
+
+    @Query("SELECT s FROM ScanRecord s WHERE s.createdAt >= :start AND s.createdAt < :end ORDER BY s.createdAt DESC")
+    List<ScanRecord> findByCreatedAtBetween(@Param("start") java.time.OffsetDateTime start, @Param("end") java.time.OffsetDateTime end);
+
+    @Query("SELECT s FROM ScanRecord s WHERE s.sessionId = :sessionId ORDER BY s.createdAt ASC")
+    List<ScanRecord> findBySessionId(@Param("sessionId") UUID sessionId);
+
+    @Query("SELECT s FROM ScanRecord s ORDER BY s.createdAt DESC")
+    List<ScanRecord> findAllOrderByCreatedAtDesc();
 }

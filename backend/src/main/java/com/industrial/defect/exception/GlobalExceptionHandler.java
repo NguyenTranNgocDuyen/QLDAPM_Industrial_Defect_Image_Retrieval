@@ -46,6 +46,20 @@ public class GlobalExceptionHandler {
                 .body(new ApiErrorResponse("VALIDATION_ERROR", message));
     }
 
+    @ExceptionHandler(org.springframework.web.client.HttpClientErrorException.NotFound.class)
+    public ResponseEntity<ApiErrorResponse> handleClientNotFound(org.springframework.web.client.HttpClientErrorException.NotFound ex) {
+        log.warn("Downstream asset not found: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ApiErrorResponse("RESOURCE_NOT_FOUND", "Tài nguyên ảnh không tồn tại trên máy chủ."));
+    }
+
+    @ExceptionHandler(org.springframework.web.client.ResourceAccessException.class)
+    public ResponseEntity<ApiErrorResponse> handleResourceAccess(org.springframework.web.client.ResourceAccessException ex) {
+        log.warn("Downstream service unreachable: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ApiErrorResponse("SERVICE_UNAVAILABLE", "Dịch vụ xử lý ảnh hiện không phản hồi."));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleGeneral(Exception ex) {
         log.error("Unhandled error: ", ex);

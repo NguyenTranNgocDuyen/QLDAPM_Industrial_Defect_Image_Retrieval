@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.local/contracts/detection-result.schema.json",
-  "title": "DetectionResult",
+  "title": "DetectionResult with unvalidated geometry v6 and area-led width confirmation",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,74 +19,163 @@
       "format": "uuid"
     },
     "success": {
-      "const": true
-    },
-    "hasDefect": {
       "type": "boolean"
     },
-    "sourceImage": {
-      "$ref": "#/$defs/imageSize"
+    "hasDefect": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "Original-coordinate image alarm only; null means unknown."
     },
-    "displayImage": {
-      "allOf": [
+    "sourceImage": {
+      "anyOf": [
         {
           "$ref": "#/$defs/imageSize"
         },
         {
-          "type": "object",
-          "required": ["url", "coordinateSpace"],
-          "properties": {
-            "url": {
-              "type": "string",
-              "minLength": 1
+          "type": "null"
+        }
+      ]
+    },
+    "displayImage": {
+      "anyOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/imageSize"
             },
-            "coordinateSpace": {
-              "enum": ["source", "processed"]
+            {
+              "type": "object",
+              "required": [
+                "url",
+                "coordinateSpace"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "coordinateSpace": {
+                  "enum": [
+                    "source",
+                    "processed"
+                  ]
+                }
+              }
             }
-          }
+          ]
+        },
+        {
+          "type": "null"
         }
       ]
     },
     "processing": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "preprocessingMs",
-        "inferenceMs",
-        "postprocessingMs",
-        "totalMs"
-      ],
-      "properties": {
-        "preprocessingMs": {
-          "type": "number",
-          "minimum": 0
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "preprocessingMs",
+            "inferenceMs",
+            "postprocessingMs",
+            "totalMs"
+          ],
+          "properties": {
+            "preprocessingMs": {
+              "type": "number",
+              "minimum": 0
+            },
+            "inferenceMs": {
+              "type": "number",
+              "minimum": 0
+            },
+            "postprocessingMs": {
+              "type": "number",
+              "minimum": 0
+            },
+            "totalMs": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
         },
-        "inferenceMs": {
-          "type": "number",
-          "minimum": 0
-        },
-        "postprocessingMs": {
-          "type": "number",
-          "minimum": 0
-        },
-        "totalMs": {
-          "type": "number",
-          "minimum": 0
+        {
+          "type": "null"
         }
-      }
+      ]
     },
     "detections": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/detection"
       }
+    },
+    "status": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "assets": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "transformMatrix": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    },
+    "damage": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/damage"
+        }
+      ]
+    },
+    "severity": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/severity"
+        }
+      ]
     }
   },
   "$defs": {
     "imageSize": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["width", "height"],
+      "required": [
+        "width",
+        "height"
+      ],
       "properties": {
         "width": {
           "type": "integer",
@@ -101,7 +190,10 @@
           "minLength": 1
         },
         "coordinateSpace": {
-          "enum": ["source", "processed"]
+          "enum": [
+            "source",
+            "processed"
+          ]
         }
       }
     },
@@ -143,6 +235,255 @@
           "exclusiveMinimum": 0
         }
       }
+    },
+    "damage": {
+      "type": "object",
+      "required": [
+        "status",
+        "candidate_pixels_original",
+        "found",
+        "threshold",
+        "alarm_pixels"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "not_processed",
+            "phone_not_found",
+            "processing_error",
+            "candidates",
+            "no_candidates",
+            "below_alarm_threshold"
+          ]
+        },
+        "candidate_pixels_original": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "found": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "threshold": {
+          "const": 0.4
+        },
+        "alarm_pixels": {
+          "const": 200
+        },
+        "detector_loaded_in_damage_engine": {
+          "const": false
+        },
+        "inference_variant": {
+          "const": "native"
+        },
+        "observed_surface": {
+          "type": "string"
+        },
+        "phone_instances": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "phone_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "error": {
+          "type": "string"
+        },
+        "target_selection": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "severity": {
+      "type": "object",
+      "required": [
+        "status",
+        "needs_review",
+        "reasons"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "insufficient_evidence",
+            "needs_review",
+            "estimated",
+            "no_detected_damage"
+          ]
+        },
+        "estimated_severity": {
+          "enum": [
+            null,
+            "minor",
+            "moderate",
+            "severe"
+          ]
+        },
+        "needs_review": {
+          "type": "boolean"
+        },
+        "heuristic_unvalidated": {
+          "const": true
+        },
+        "config_version": {
+          "type": "string"
+        },
+        "classification_rule": {
+          "enum": ["max_metric", "area_and_width", "area_led_width_confirmation"]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "measurement_coordinate_space": {
+          "enum": [
+            null,
+            "rectified_surface",
+            "source"
+          ]
+        },
+        "scope": {
+          "const": "observed_surface_only"
+        },
+        "component_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "metric_levels": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "minor",
+              "moderate",
+              "severe"
+            ]
+          }
+        },
+        "area_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "skeleton_length_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "width_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "skeleton_length_max_px": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "skeleton_length_total_px": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "width_p90_max_px": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "estimation_basis": {
+          "enum": [
+            null,
+            "image_geometry",
+            "known_surface_geometry",
+            "observed_area_only"
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "geometry_diagnostics": {
+          "type": "object"
+        },
+        "severity_is_partial": {"type": "boolean"},
+        "unassessed_metrics": {
+          "type": "array",
+          "items": {"enum": ["skeleton_length_ratio", "width_ratio"]}
+        },
+        "locations_coordinate_space": {"enum": ["source", "rectified_surface"]},
+        "locations": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object",
+            "required": [
+              "region",
+              "candidate_share"
+            ],
+            "oneOf": [
+              {"required": ["candidate_pixels_rectified"]},
+              {"required": ["candidate_pixels_source"]}
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "region": {
+                "enum": [
+                  "top_left",
+                  "top_center",
+                  "top_right",
+                  "middle_left",
+                  "middle_center",
+                  "middle_right",
+                  "bottom_left",
+                  "bottom_center",
+                  "bottom_right"
+                ]
+              },
+              "candidate_pixels_rectified": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "candidate_pixels_source": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "candidate_share": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

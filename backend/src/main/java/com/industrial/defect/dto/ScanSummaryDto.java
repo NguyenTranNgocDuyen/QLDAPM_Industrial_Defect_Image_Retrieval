@@ -6,9 +6,14 @@ import java.util.UUID;
 public class ScanSummaryDto {
 
     private UUID scanId;
+    private UUID sessionId;
     private String originalFilename;
     private String displayImageUrl;
-    private boolean hasDefect;
+    private String sourceImageUrl;
+    private String surface;
+    private String estimatedSeverity;
+    private Boolean needsReview;
+    private Boolean hasDefect;
     private int detectionCount;
     private String status;
     private Double totalMs;
@@ -17,7 +22,7 @@ public class ScanSummaryDto {
     public ScanSummaryDto() {
     }
 
-    public ScanSummaryDto(UUID scanId, String originalFilename, String displayImageUrl, boolean hasDefect,
+    public ScanSummaryDto(UUID scanId, String originalFilename, String displayImageUrl, Boolean hasDefect,
                           int detectionCount, String status, Double totalMs, OffsetDateTime createdAt) {
         this.scanId = scanId;
         this.originalFilename = originalFilename;
@@ -37,6 +42,14 @@ public class ScanSummaryDto {
         this.scanId = scanId;
     }
 
+    public UUID getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(UUID sessionId) {
+        this.sessionId = sessionId;
+    }
+
     public String getOriginalFilename() {
         return originalFilename;
     }
@@ -53,11 +66,43 @@ public class ScanSummaryDto {
         this.displayImageUrl = displayImageUrl;
     }
 
-    public boolean isHasDefect() {
+    public String getSourceImageUrl() {
+        return sourceImageUrl;
+    }
+
+    public void setSourceImageUrl(String sourceImageUrl) {
+        this.sourceImageUrl = sourceImageUrl;
+    }
+
+    public String getSurface() {
+        return surface;
+    }
+
+    public void setSurface(String surface) {
+        this.surface = surface;
+    }
+
+    public String getEstimatedSeverity() {
+        return estimatedSeverity;
+    }
+
+    public void setEstimatedSeverity(String estimatedSeverity) {
+        this.estimatedSeverity = estimatedSeverity;
+    }
+
+    public Boolean getNeedsReview() {
+        return needsReview;
+    }
+
+    public void setNeedsReview(Boolean needsReview) {
+        this.needsReview = needsReview;
+    }
+
+    public Boolean isHasDefect() {
         return hasDefect;
     }
 
-    public void setHasDefect(boolean hasDefect) {
+    public void setHasDefect(Boolean hasDefect) {
         this.hasDefect = hasDefect;
     }
 

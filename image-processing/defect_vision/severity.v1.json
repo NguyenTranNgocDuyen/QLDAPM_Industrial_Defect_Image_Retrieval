@@ -1,0 +1,7 @@
+{
+  "version": "geometry-v1-unvalidated",
+  "heuristic_unvalidated": true,
+  "area_ratio": {"moderate": 0.005, "severe": 0.03},
+  "skeleton_length_ratio": {"moderate": 0.20, "severe": 0.50},
+  "width_ratio": {"moderate": 0.005, "severe": 0.015}
+}

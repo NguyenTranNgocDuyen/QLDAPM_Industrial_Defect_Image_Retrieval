@@ -1,287 +1,144 @@
-import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_typography.dart';
+import '../data/damage_api.dart';
+import '../models/capture_condition.dart';
 import 'result_screen.dart';
+
+String _generateUuidV4() {
+  final rnd = Random.secure();
+  final bytes = List<int>.generate(16, (_) => rnd.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}';
+}
 
 class AnalysisScreen extends StatefulWidget {
   final String deviceName;
   final String deviceImei;
-
+  final Map<InspectionStepType, String> capturedImages;
   const AnalysisScreen({
     super.key,
     required this.deviceName,
     required this.deviceImei,
+    this.capturedImages = const {},
   });
-
   @override
   State<AnalysisScreen> createState() => _AnalysisScreenState();
 }
 
-class _AnalysisScreenState extends State<AnalysisScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _scanAnimController;
-  int _currentPhaseIndex = 0;
-  double _overallProgress = 0.08;
+class _AnalysisScreenState extends State<AnalysisScreen> {
+  final _api = DamageApi();
+  bool _running = false;
+  String _phase = 'Sẵn sàng phân tích ảnh đã chụp';
+  int _done = 0;
 
-  final List<String> _scanPhases = [
-    'Khử nhiễu quang học & cân bằng phơi sáng',
-    'Phân đoạn viền máy & bề mặt kính (Segmentation)',
-    'Quét micro-crack & xước dăm bằng Kernel tích chập',
-    'Đo lường kích thước & phân loại cấp độ lỗi',
-    'Tổng hợp ma trận phân hạng ngoại quan'
-  ];
-
-  Timer? _progressTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _scanAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-
-    _startSimulatedPipeline();
-  }
-
-  void _startSimulatedPipeline() {
-    _progressTimer = Timer.periodic(const Duration(milliseconds: 600), (timer) {
+  Future<void> _analyze() async {
+    setState(() => _running = true);
+    final results = <InspectionStepType, Map<String, dynamic>>{};
+    final sessionId = _generateUuidV4();
+    for (final entry in widget.capturedImages.entries) {
       if (!mounted) return;
-      setState(() {
-        _overallProgress += 0.22;
-        if (_overallProgress >= 1.0) {
-          _overallProgress = 1.0;
-          timer.cancel();
-          Future.delayed(const Duration(milliseconds: 400), () {
-            if (!mounted) return;
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (_) => ResultScreen(
-                  deviceName: widget.deviceName,
-                  deviceImei: widget.deviceImei,
-                ),
-              ),
-            );
-          });
-        } else {
-          _currentPhaseIndex = (_overallProgress * (_scanPhases.length - 1)).toInt();
-        }
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _progressTimer?.cancel();
-    _scanAnimController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.darkCanvas,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('KHỐI PHÂN TÍCH QUANG HỌC', style: AppTypography.labelCaps),
-                      const SizedBox(height: 4),
-                      Text(widget.deviceName, style: AppTypography.titleMedium),
-                    ],
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.amberMuted,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: AppColors.amberAccent, width: 1),
-                    ),
-                    child: Text(
-                      'PROCESSING',
-                      style: AppTypography.monoSmall.copyWith(
-                        color: AppColors.amberAccent,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              // Vùng quét giả lập quét theo từng khu vực (Sector-by-sector scanner)
-              Expanded(
-                flex: 3,
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: AppColors.darkSurface,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.darkBorder),
-                  ),
-                  child: Stack(
-                    children: [
-                      // Lưới tọa độ ma trận
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: _GridMatrixPainter(),
-                        ),
-                      ),
-
-                      // Tia laser quét dọc (Scanline animation)
-                      AnimatedBuilder(
-                        animation: _scanAnimController,
-                        builder: (context, child) {
-                          return Positioned(
-                            top: _scanAnimController.value * 280,
-                            left: 0,
-                            right: 0,
-                            child: Container(
-                              height: 2,
-                              decoration: BoxDecoration(
-                                color: AppColors.amberAccent,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.amberAccent.withOpacity(0.6),
-                                    blurRadius: 6,
-                                    spreadRadius: 1,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-
-                      // Thông số thời gian thực đè lên màn hình quét
-                      Positioned(
-                        bottom: 12,
-                        left: 14,
-                        right: 14,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'SECTOR: #0${_currentPhaseIndex + 1} / REGION_SCAN',
-                              style: AppTypography.monoSmall,
-                            ),
-                            Text(
-                              '${(_overallProgress * 100).toInt()}% COMPLETE',
-                              style: AppTypography.monoMetric.copyWith(
-                                color: AppColors.amberAccent,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Tiến trình các bước
-              Text('TIẾN TRÌNH THỰC THI THUẬT TOÁN', style: AppTypography.labelCaps),
-              const SizedBox(height: 12),
-
-              Expanded(
-                flex: 2,
-                child: ListView.separated(
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _scanPhases.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (context, idx) {
-                    final isDone = idx < _currentPhaseIndex;
-                    final isRunning = idx == _currentPhaseIndex;
-
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isRunning
-                            ? AppColors.darkSurfaceElevated
-                            : AppColors.darkSurface,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: isRunning
-                              ? AppColors.amberAccent
-                              : (isDone ? AppColors.statusPass : AppColors.darkBorderSubtle),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isDone
-                                ? Icons.check_circle_outline
-                                : (isRunning ? Icons.radar : Icons.radio_button_unchecked),
-                            size: 16,
-                            color: isDone
-                                ? AppColors.statusPass
-                                : (isRunning ? AppColors.amberAccent : AppColors.textMutedDark),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              _scanPhases[idx],
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isRunning
-                                    ? Colors.white
-                                    : (isDone
-                                        ? AppColors.textSecondaryDark
-                                        : AppColors.textMutedDark),
-                              ),
-                            ),
-                          ),
-                          if (isRunning)
-                            const SizedBox(
-                              width: 12,
-                              height: 12,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.5,
-                                color: AppColors.amberAccent,
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
+      final elapsed = Stopwatch()..start();
+      debugPrint(
+        '[DamageApi] ${entry.key.name}: bắt đầu gửi tới ${DamageApi.baseUrl}',
+      );
+      setState(
+        () => _phase =
+            'Đang phân tích ${entry.key.label.toLowerCase()} ở độ phân giải gốc…',
+      );
+      try {
+        results[entry.key] = await _api.analyze(
+          entry.value,
+          entry.key.name,
+          sessionId: sessionId,
+          deviceInfo: widget.deviceName,
+        );
+        debugPrint(
+          '[DamageApi] ${entry.key.name}: hoàn tất sau ${elapsed.elapsedMilliseconds} ms, '
+          'status=${results[entry.key]?['status']}',
+        );
+      } catch (error, stack) {
+        if (!mounted) return;
+        final failure = error is DamageApiException
+            ? error
+            : const DamageApiException(
+                'unexpected_error',
+                'Không nhận được kết quả hợp lệ. Hãy kiểm tra kết nối và thử lại.',
+              );
+        debugPrint('[DamageApi] ${failure.code}: $error');
+        debugPrintStack(stackTrace: stack);
+        results[entry.key] = {
+          'success': false,
+          'error': {'code': failure.code, 'message': failure.message},
+          'severity': {
+            'status': 'insufficient_evidence',
+            'needs_review': true,
+            'estimated_severity': null,
+            'reasons': ['connection_or_processing_error'],
+          },
+          'damage': {'status': 'processing_error'},
+        };
+      }
+      if (!mounted) return;
+      setState(() => _done++);
+    }
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => ResultScreen(
+          deviceName: widget.deviceName,
+          deviceImei: widget.deviceImei,
+          results: results,
         ),
       ),
     );
   }
-}
 
-class _GridMatrixPainter extends CustomPainter {
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF242930)
-      ..strokeWidth = 0.5;
-
-    const step = 28.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
+  void dispose() {
+    _api.close();
+    super.dispose();
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: AppColors.darkCanvas,
+    appBar: AppBar(title: Text(widget.deviceName)),
+    body: SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(_phase, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 20),
+          if (_running) ...[
+            const LinearProgressIndicator(),
+            const SizedBox(height: 12),
+            Text(
+              'Đã xử lý $_done / ${widget.capturedImages.length} ảnh. Vui lòng giữ màn hình mở.',
+            ),
+          ] else ...[
+            Text(
+              '${widget.capturedImages.length} ảnh sẽ được gửi tới máy chủ để phân tích.',
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Đánh giá từng mặt quan sát bằng hình học. Các ngưỡng thử nghiệm chưa được kiểm chứng bằng nhãn mức độ của con người.',
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Tự xác định vùng hư hại và mức Nhẹ/Vừa/Nặng theo hình ảnh. Không cần nhập dòng máy hoặc kích thước. Ảnh thiếu phần có thể nhận mức sơ bộ trên vùng nhìn thấy, kèm cảnh báo cần kiểm tra.',
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: widget.capturedImages.isEmpty ? null : _analyze,
+              icon: const Icon(Icons.analytics_outlined),
+              label: const Text('Phân tích ảnh'),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
 }

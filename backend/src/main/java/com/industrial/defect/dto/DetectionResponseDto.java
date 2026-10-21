@@ -3,12 +3,18 @@ package com.industrial.defect.dto;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
 
 public class DetectionResponseDto {
 
     private UUID scanId;
     private boolean success;
-    private boolean hasDefect;
+    private Boolean hasDefect;
+    private String status;
+    private Map<String, Object> damage;
+    private Map<String, Object> severity;
+    private Map<String, String> assets;
+    private List<List<Double>> transformMatrix;
     private ImageSizeDto sourceImage;
     private ImageSizeDto displayImage;
     private ProcessingTimingDto processing;
@@ -17,7 +23,7 @@ public class DetectionResponseDto {
     public DetectionResponseDto() {
     }
 
-    public DetectionResponseDto(UUID scanId, boolean success, boolean hasDefect, ImageSizeDto sourceImage,
+    public DetectionResponseDto(UUID scanId, boolean success, Boolean hasDefect, ImageSizeDto sourceImage,
                                 ImageSizeDto displayImage, ProcessingTimingDto processing,
                                 List<DetectionItemDto> detections) {
         this.scanId = scanId;
@@ -45,11 +51,11 @@ public class DetectionResponseDto {
         this.success = success;
     }
 
-    public boolean isHasDefect() {
+    public Boolean isHasDefect() {
         return hasDefect;
     }
 
-    public void setHasDefect(boolean hasDefect) {
+    public void setHasDefect(Boolean hasDefect) {
         this.hasDefect = hasDefect;
     }
 
@@ -84,4 +90,15 @@ public class DetectionResponseDto {
     public void setDetections(List<DetectionItemDto> detections) {
         this.detections = detections;
     }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public Map<String, Object> getDamage() { return damage; }
+    public void setDamage(Map<String, Object> damage) { this.damage = damage; }
+    public Map<String, Object> getSeverity() { return severity; }
+    public void setSeverity(Map<String, Object> severity) { this.severity = severity; }
+    public Map<String, String> getAssets() { return assets; }
+    public void setAssets(Map<String, String> assets) { this.assets = assets; }
+    public List<List<Double>> getTransformMatrix() { return transformMatrix; }
+    public void setTransformMatrix(List<List<Double>> matrix) { this.transformMatrix = matrix; }
 }

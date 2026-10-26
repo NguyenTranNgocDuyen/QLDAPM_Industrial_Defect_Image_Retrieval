@@ -72,6 +72,23 @@ class CorrectPerspectiveTests(unittest.TestCase):
         with self.assertRaises(PerspectiveCorrectionError):
             correct_perspective(image, [(-1, 0), (99, 0), (99, 99), (0, 99)])
 
+    def test_detect_device_corners_finds_quad(self) -> None:
+        from defect_vision.demo import create_perspective_view
+        from defect_vision.perspective import detect_device_corners
+
+        image, true_corners = create_perspective_view()
+        detected = detect_device_corners(image)
+
+        self.assertIsNotNone(detected)
+        self.assertEqual(detected.shape, (4, 2))
+
+    def test_detect_device_corners_returns_none_for_flat_image(self) -> None:
+        from defect_vision.perspective import detect_device_corners
+
+        flat = np.full((100, 100, 3), 128, dtype=np.uint8)
+        self.assertIsNone(detect_device_corners(flat))
+
 
 if __name__ == "__main__":
     unittest.main()
+

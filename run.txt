@@ -1,0 +1,14 @@
+cd D:\XuLiAnh\Industrial-Defect-Image-Retrieval\image-processing
+& D:\XuLiAnh\.venv\Scripts\python.exe -m defect_vision.damage_api --port 8000 --device cpu
+
+cd D:\XuLiAnh\Industrial-Defect-Image-Retrieval\backend
+# Khuyen nghi chay:
+mvn spring-boot:run
+
+cd D:\XuLiAnh\Industrial-Defect-Image-Retrieval\app
+flutter pub get
+flutter devices
+# Chay tren Android Emulator (10.0.2.2 tro ve localhost may tinh):
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
+# Hoac chay tren thiet bi that qua Wi-Fi / USB (kem cong :8080):
+# powershell -ExecutionPolicy Bypass -File .\scripts\run-app.ps1 -ApiBaseUrl "http://10.251.63.27:8080"

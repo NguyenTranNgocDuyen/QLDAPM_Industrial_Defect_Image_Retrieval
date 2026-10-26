@@ -12,14 +12,15 @@ from PIL import Image
 from preprocessing.enhancement import equalize_luminance
 from preprocessing.filtering import gaussian_filter, median_filter
 from preprocessing.histogram import save_histogram
-from preprocessing.resize import resize_image
+from preprocessing.resize import letterbox_resize
 
 
 def create_experiment(image_path: str | Path, output_dir: str | Path, image_size: int = 224) -> None:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     original = Image.open(image_path).convert("RGB")
-    resized = np.asarray(resize_image(original, image_size))
+    # This is a report preview only.  It intentionally never feeds v3 inference.
+    resized = np.asarray(letterbox_resize(original, (image_size, image_size))[0])
     variants = {
         "original": np.asarray(original),
         "resized": resized,

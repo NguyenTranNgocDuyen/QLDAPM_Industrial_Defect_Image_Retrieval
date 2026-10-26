@@ -63,7 +63,7 @@ class _GuideOverlayPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final dashPaint = Paint()
-      ..color = accentColor.withOpacity(0.25)
+      ..color = accentColor.withValues(alpha: 0.25)
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
 

@@ -1,0 +1,79 @@
+{
+  "config": {
+    "version": "offline-preprocess-ab-v1",
+    "presets": [
+      "raw",
+      "gaussian",
+      "median",
+      "clahe",
+      "gamma",
+      "background",
+      "combined"
+    ]
+  },
+  "rows": [
+    {
+      "input": "tv1-test-artifacts\\experiment-benchmark\\input.png",
+      "preset": "raw",
+      "parameters": "{}",
+      "preprocess_latency_ms": 0.013,
+      "output": "tv1-test-artifacts\\experiment-benchmark\\benchmark\\input_raw.png",
+      "config_sha256": "4de41f7f520df9c02df8592d34e007fe062e1dd81c5739add84dd8cc0cffc8cf",
+      "warning": "Image-quality metrics are not model-quality metrics; this result cannot justify changing model input."
+    },
+    {
+      "input": "tv1-test-artifacts\\experiment-benchmark\\input.png",
+      "preset": "gaussian",
+      "parameters": "{\"kernel\": 5, \"sigma\": 1}",
+      "preprocess_latency_ms": 0.162,
+      "output": "tv1-test-artifacts\\experiment-benchmark\\benchmark\\input_gaussian.png",
+      "config_sha256": "4de41f7f520df9c02df8592d34e007fe062e1dd81c5739add84dd8cc0cffc8cf",
+      "warning": "Image-quality metrics are not model-quality metrics; this result cannot justify changing model input."
+    },
+    {
+      "input": "tv1-test-artifacts\\experiment-benchmark\\input.png",
+      "preset": "median",
+      "parameters": "{\"kernel\": 3}",
+      "preprocess_latency_ms": 0.027,
+      "output": "tv1-test-artifacts\\experiment-benchmark\\benchmark\\input_median.png",
+      "config_sha256": "4de41f7f520df9c02df8592d34e007fe062e1dd81c5739add84dd8cc0cffc8cf",
+      "warning": "Image-quality metrics are not model-quality metrics; this result cannot justify changing model input."
+    },
+    {
+      "input": "tv1-test-artifacts\\experiment-benchmark\\input.png",
+      "preset": "clahe",
+      "parameters": "{\"clipLimit\": 2.0, \"gridSize\": 8}",
+      "preprocess_latency_ms": 1.864,
+      "output": "tv1-test-artifacts\\experiment-benchmark\\benchmark\\input_clahe.png",
+      "config_sha256": "4de41f7f520df9c02df8592d34e007fe062e1dd81c5739add84dd8cc0cffc8cf",
+      "warning": "Image-quality metrics are not model-quality metrics; this result cannot justify changing model input."
+    },
+    {
+      "input": "tv1-test-artifacts\\experiment-benchmark\\input.png",
+      "preset": "gamma",
+      "parameters": "{\"gamma\": 0.744197, \"targetMean\": 128.0}",
+      "preprocess_latency_ms": 1.433,
+      "output": "tv1-test-artifacts\\experiment-benchmark\\benchmark\\input_gamma.png",
+      "config_sha256": "4de41f7f520df9c02df8592d34e007fe062e1dd81c5739add84dd8cc0cffc8cf",
+      "warning": "Image-quality metrics are not model-quality metrics; this result cannot justify changing model input."
+    },
+    {
+      "input": "tv1-test-artifacts\\experiment-benchmark\\input.png",
+      "preset": "background",
+      "parameters": "{\"backgroundKernel\": 201}",
+      "preprocess_latency_ms": 1.7,
+      "output": "tv1-test-artifacts\\experiment-benchmark\\benchmark\\input_background.png",
+      "config_sha256": "4de41f7f520df9c02df8592d34e007fe062e1dd81c5739add84dd8cc0cffc8cf",
+      "warning": "Image-quality metrics are not model-quality metrics; this result cannot justify changing model input."
+    },
+    {
+      "input": "tv1-test-artifacts\\experiment-benchmark\\input.png",
+      "preset": "combined",
+      "parameters": "{\"backgroundKernel\": 201, \"clipLimit\": 2.0, \"gridSize\": 8}",
+      "preprocess_latency_ms": 1.405,
+      "output": "tv1-test-artifacts\\experiment-benchmark\\benchmark\\input_combined.png",
+      "config_sha256": "4de41f7f520df9c02df8592d34e007fe062e1dd81c5739add84dd8cc0cffc8cf",
+      "warning": "Image-quality metrics are not model-quality metrics; this result cannot justify changing model input."
+    }
+  ]
+}

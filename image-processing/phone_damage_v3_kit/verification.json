@@ -1,0 +1,19 @@
+{
+  "check": "Packaging equivalence only; not a new quality evaluation.",
+  "image_id": "d155",
+  "split": "val",
+  "device": "cpu",
+  "original_shape": [
+    3264,
+    2448
+  ],
+  "exact_mask_parity": true,
+  "candidate_pixels": 213781,
+  "detector_loaded": false,
+  "threshold": 0.4,
+  "inference_variant": "native",
+  "mask_array_sha256": "1031f24ab2e89135517acba16fc281e46435cfe49008613e5e8790737b88bf17",
+  "model_sha256": "a8dce48c3fd0c260e7bb2fa167e1f148eeffe46a9b01c68733bbd168a280ede3",
+  "subprocess_working_directory": "temporary directory outside source and package",
+  "severity_implemented": false
+}

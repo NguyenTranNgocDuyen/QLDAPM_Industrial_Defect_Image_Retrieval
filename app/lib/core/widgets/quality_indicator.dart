@@ -28,9 +28,9 @@ class QualityIndicatorHUD extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.darkSurface.withOpacity(0.85),
+        color: AppColors.darkSurface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withOpacity(0.8), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.8), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

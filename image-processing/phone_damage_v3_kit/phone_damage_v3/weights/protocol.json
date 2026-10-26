@@ -1,0 +1,65 @@
+{
+  "architecture": "resnet18_unet_phone_context_v3",
+  "model_sha256": "a8dce48c3fd0c260e7bb2fa167e1f148eeffe46a9b01c68733bbd168a280ede3",
+  "phone_model_file": "phone_detect.pt",
+  "phone_model_sha256": "b470b7e3537ec83d64a5024081cf052a92424d86486e3cf1dc70298697cb8ed8",
+  "phone_confidence": 0.3,
+  "threshold": 0.4,
+  "patch_size": 512,
+  "overlap": 128,
+  "context_size": 512,
+  "body_margin": 0,
+  "source_manifest_sha256": "9f657ece293dde5910b48636649128b908173bfb6ff695514ba2a2ad9bb4167c",
+  "inference_variant": "native",
+  "scope": "full_phone_damage_with_body_and_aligned_context",
+  "epoch": 6,
+  "training_experiment": {
+    "architecture": "resnet18_unet_phone_context_v3",
+    "arguments": {
+      "command": "train",
+      "manifest": "D:\\trainModel\\my_data\\datasets\\phone_damage_roi_v3_20261020\\manifest.json",
+      "model": "D:\\trainModel\\models\\screen_cracks_v1\\model.pt",
+      "name": "roi_context_train_20261020",
+      "patch_size": 512,
+      "overlap": 128,
+      "body_margin": 0,
+      "epochs": 24,
+      "steps_per_epoch": 32,
+      "steps": 96,
+      "val_every": 3,
+      "patience": 4,
+      "lr": 0.0001,
+      "seed": 42,
+      "skip_initial_val": false,
+      "device": "auto"
+    },
+    "device": "cuda:0",
+    "torch": "2.13.0+cu126",
+    "dataset_stats": {
+      "train": {
+        "damaged": 206,
+        "normal": 24,
+        "forced_normal": 2
+      },
+      "val": {
+        "damaged": 26,
+        "normal": 4
+      }
+    },
+    "manifest_sha256": "9f657ece293dde5910b48636649128b908173bfb6ff695514ba2a2ad9bb4167c",
+    "initial_model_sha256": "264c23c9a99de0079546d21790092b79537665f42dba4d5459c4fce74ddcacdc",
+    "phone_model_sha256": "b470b7e3537ec83d64a5024081cf052a92424d86486e3cf1dc70298697cb8ed8",
+    "precision": "FP32",
+    "pos_weight": 1.5,
+    "source_code_sha256": {
+      "phone_damage_roi.py": "a3e3b8c9ea5db63f2020d2210f7928a1744ed466925186092b8014f208d5fed9",
+      "train_damage_roi.py": "6a0d3de1b4d545d12f888f0df7cf443f6a436509b5857079a474621d208e9710",
+      "prepare_damage_roi.py": "a334f8cfbb95103fe2bf4b04c9f5d4da4e9e1216575a0242cd6a5eeae3a3fc04"
+    },
+    "sampling": "50% positive, 25% healthy regions of damage images, 25% normals; exact target retained.",
+    "validation": "Original full-size GT; no test images; frozen cached phone masks; strict normal-alarm constraint."
+  },
+  "input": "Upright RGB; RF-DETR body; full-phone letterbox context; native-resolution detail tiles.",
+  "output": "Damage mask in original image coordinates; no-phone is an explicit error.",
+  "evaluation": "Validation only, original full GT; no test tuning. Four normal images do not establish real-world FPR."
+}

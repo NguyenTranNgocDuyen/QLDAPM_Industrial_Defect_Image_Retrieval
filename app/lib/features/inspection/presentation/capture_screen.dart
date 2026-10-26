@@ -1,25 +1,29 @@
-import 'dart:io';
+import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
-import '../../../core/widgets/quality_indicator.dart';
+import '../data/damage_api.dart';
 import '../models/capture_condition.dart';
 import 'widgets/capture_guide_overlay.dart';
 import 'widgets/thumbnail_step_tray.dart';
 import 'analysis_screen.dart';
+import 'history_screen.dart';
+import 'photo_review_screen.dart';
 
 class CaptureScreen extends StatefulWidget {
   final String deviceImei;
   final String deviceName;
+  final ImagePicker? imagePicker;
 
   const CaptureScreen({
     super.key,
     this.deviceImei = "356892110294812",
     this.deviceName = "Apple iPhone 13 Pro 128GB",
+    this.imagePicker,
   });
 
   @override
@@ -27,196 +31,506 @@ class CaptureScreen extends StatefulWidget {
 }
 
 class _CaptureScreenState extends State<CaptureScreen>
-    with SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver {
+  late final ImagePicker _picker;
   DeviceProfile _currentProfile = DeviceProfile.smartphone;
   int _currentStepIndex = 0;
   bool _flashTorch = false;
   bool _gridVisible = true;
-  File? _selectedImageFile;
-  bool _isPickingImage = false;
 
-  // Animation controller cho hiệu ứng preview ảnh
-  late AnimationController _previewAnimController;
-  late Animation<double> _previewFadeAnim;
-
-  final CaptureCondition _condition = const CaptureCondition(
-    stability: 0.94,
-    lightingLux: 520,
-    glareScore: 0.12,
-    distanceCm: 18.5,
-  );
+  CameraController? _camera;
+  Future<void> _cameraQueue = Future<void>.value();
+  bool _cameraWanted = true;
+  bool _cameraLoading = true;
+  bool _isCapturing = false;
+  bool _changingFlash = false;
+  bool _analysisOpen = false;
+  bool _reviewOpen = false;
+  bool _isPickingGallery = false;
+  bool _historyOpen = false;
+  bool _isSubmitting = false;
+  String? _cameraError;
 
   final Map<int, String> _capturedThumbnails = {};
-  final List<InspectionStepType> _steps = InspectionStepType.values;
-  final ImagePicker _imagePicker = ImagePicker();
+  final Map<int, Uint8List> _thumbnailBytes = {};
+  final Map<int, bool> _isGalleryPhoto = {};
+  static const List<InspectionStepType> _steps = [
+    InspectionStepType.front,
+    InspectionStepType.back,
+  ];
+
+  bool get _cameraReady =>
+      _camera?.value.isInitialized == true &&
+      _camera?.value.hasError == false &&
+      _cameraError == null &&
+      _cameraWanted &&
+      !_cameraLoading;
+
+  bool get _hasBothPhotos => _steps.asMap().keys.every(
+    (index) => _capturedThumbnails.containsKey(index),
+  );
+
+  bool get _isBusy =>
+      _isCapturing ||
+      _isSubmitting ||
+      _reviewOpen ||
+      _isPickingGallery ||
+      _historyOpen;
 
   @override
   void initState() {
     super.initState();
-    _previewAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _previewFadeAnim = CurvedAnimation(
-      parent: _previewAnimController,
-      curve: Curves.easeIn,
-    );
+    _picker = widget.imagePicker ?? ImagePicker();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_syncCamera());
+    unawaited(_checkLostData());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _cameraWanted =
+        state == AppLifecycleState.resumed &&
+        !_analysisOpen &&
+        !_reviewOpen &&
+        !_isPickingGallery &&
+        !_historyOpen;
+    unawaited(_syncCamera());
+  }
+
+  Future<void> _checkLostData() async {
+    try {
+      final response = await _picker.retrieveLostData();
+      if (response.isEmpty || response.file == null || !mounted) return;
+      final file = response.file!;
+      final length = await file.length();
+      if (length > 25 * 1024 * 1024) return;
+      final bytes = await file.readAsBytes();
+      try {
+        DamageApi.detectMimeAndFilename(file.path, bytes);
+      } catch (_) {
+        return;
+      }
+      final index = _currentStepIndex;
+      setState(() {
+        _capturedThumbnails[index] = file.path;
+        _thumbnailBytes[index] = bytes;
+        _isGalleryPhoto[index] = true;
+      });
+      await _reviewCapturedPhoto(index);
+    } catch (error) {
+      debugPrint('retrieveLostData error: $error');
+    }
+  }
+
+  // Serialize camera operations so returning from background never opens
+  // a second camera while the previous session is still being released.
+  Future<void> _syncCamera() {
+    _cameraQueue = _cameraQueue.then((_) => _updateCamera());
+    return _cameraQueue;
+  }
+
+  Future<void> _releaseCamera() async {
+    final camera = _camera;
+    _camera = null;
+    _flashTorch = false;
+    camera?.removeListener(_onCameraChanged);
+    if (mounted) setState(() {});
+    try {
+      await camera?.dispose();
+    } catch (error) {
+      debugPrint('Camera dispose: $error');
+    }
+  }
+
+  Future<void> _updateCamera() async {
+    if (!mounted || !_cameraWanted) {
+      await _releaseCamera();
+      return;
+    }
+    if (_cameraReady) return;
+
+    await _releaseCamera();
+    if (!mounted || !_cameraWanted) return;
+    setState(() {
+      _cameraLoading = true;
+      _cameraError = null;
+    });
+
+    CameraController? camera;
+    try {
+      final cameras = await availableCameras();
+      if (!mounted || !_cameraWanted) return;
+      if (cameras.isEmpty) {
+        throw CameraException(
+          'NoCamera',
+          'Không tìm thấy camera trên thiết bị.',
+        );
+      }
+      final description = cameras.firstWhere(
+        (cam) => cam.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+      camera = CameraController(
+        description,
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
+      await camera.initialize();
+      if (!mounted || !_cameraWanted) {
+        await camera.dispose();
+        return;
+      }
+      try {
+        await camera.setFlashMode(FlashMode.off);
+      } on CameraException catch (_) {}
+      if (!mounted || !_cameraWanted) {
+        await camera.dispose();
+        return;
+      }
+      _camera = camera;
+      camera.addListener(_onCameraChanged);
+    } catch (error) {
+      await camera?.dispose();
+      if (mounted && _cameraWanted) {
+        _cameraError = _cameraErrorMessage(error);
+      }
+    } finally {
+      if (mounted) setState(() => _cameraLoading = false);
+    }
+  }
+
+  String _cameraErrorMessage(Object error) {
+    if (error is CameraException) {
+      switch (error.code) {
+        case 'CameraAccessDenied':
+        case 'CameraAccessDeniedWithoutPrompt':
+        case 'CameraAccessRestricted':
+          return 'Chưa có quyền camera. Hãy cho phép Camera trong Cài đặt '
+              '> Ứng dụng > Cosmetic Inspector > Quyền, rồi bấm Thử lại.';
+        case 'NoCamera':
+          return 'Không tìm thấy camera trên thiết bị.';
+      }
+    }
+    debugPrint('Camera error: $error');
+    return 'Không mở được camera. Hãy đóng ứng dụng đang dùng camera và thử lại.';
+  }
+
+  void _onCameraChanged() {
+    if (!mounted) return;
+    if (_camera?.value.hasError == true) {
+      setState(() {
+        _cameraError = 'Camera bị gián đoạn. Hãy bấm Thử lại để kết nối lại.';
+      });
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _toggleFlash() async {
+    final camera = _camera;
+    if (!_cameraReady || camera == null || _changingFlash || _isBusy) {
+      return;
+    }
+    _changingFlash = true;
+    final enabled = !_flashTorch;
+    try {
+      await camera.setFlashMode(enabled ? FlashMode.torch : FlashMode.off);
+      if (mounted && identical(camera, _camera)) {
+        setState(() => _flashTorch = enabled);
+      }
+    } on CameraException catch (_) {
+      _showError('Không bật được đèn flash trên camera này.');
+    } finally {
+      _changingFlash = false;
+    }
+  }
+
+  Future<void> _onTriggerShutter() async {
+    final camera = _camera;
+    if (!_cameraReady || camera == null || _isBusy || _changingFlash) {
+      return;
+    }
+    final stepIndex = _currentStepIndex;
+    setState(() => _isCapturing = true);
+    HapticFeedback.mediumImpact();
+    try {
+      final image = await camera.takePicture();
+      final bytes = await image.readAsBytes();
+      if (!mounted || !identical(camera, _camera) || !_cameraWanted) return;
+      setState(() {
+        _capturedThumbnails[stepIndex] = image.path;
+        _thumbnailBytes[stepIndex] = bytes;
+        _isGalleryPhoto[stepIndex] = false;
+      });
+      await _reviewCapturedPhoto(stepIndex);
+    } catch (error) {
+      debugPrint('Capture error: $error');
+      _showError('Không chụp được ảnh. Hãy giữ máy ổn định và thử lại.');
+    } finally {
+      if (mounted) setState(() => _isCapturing = false);
+    }
+  }
+
+  Future<void> _pickFromGallery({int? targetIndex}) async {
+    if (_isBusy) return;
+    final index = targetIndex ?? _currentStepIndex;
+    setState(() {
+      _isPickingGallery = true;
+      _currentStepIndex = index;
+    });
+    _cameraWanted = false;
+    try {
+      await _syncCamera();
+      // Keep original resolution: do NOT provide maxWidth/maxHeight/imageQuality
+      final file = await _picker.pickImage(source: ImageSource.gallery);
+      if (!mounted || file == null) return;
+
+      final length = await file.length();
+      if (length > 25 * 1024 * 1024) {
+        _showError(
+          'Dung lượng ảnh (${(length / (1024 * 1024)).toStringAsFixed(1)} MB) vượt quá giới hạn 25 MB của máy chủ.',
+        );
+        return;
+      }
+
+      final bytes = await file.readAsBytes();
+      try {
+        DamageApi.detectMimeAndFilename(file.path, bytes);
+      } on DamageApiException catch (e) {
+        _showError(e.message);
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _capturedThumbnails[index] = file.path;
+        _thumbnailBytes[index] = bytes;
+        _isGalleryPhoto[index] = true;
+      });
+      await _reviewCapturedPhoto(index);
+    } catch (error) {
+      debugPrint('Pick gallery error: $error');
+      _showError('Không thể chọn ảnh từ thư viện. Vui lòng thử lại.');
+    } finally {
+      if (mounted) {
+        setState(() => _isPickingGallery = false);
+        _cameraWanted =
+            WidgetsBinding.instance.lifecycleState ==
+                AppLifecycleState.resumed &&
+            !_analysisOpen &&
+            !_reviewOpen &&
+            !_historyOpen;
+        await _syncCamera();
+      }
+    }
+  }
+
+  Future<void> _reviewCapturedPhoto(int index) async {
+    final bytes = _thumbnailBytes[index];
+    if (bytes == null || _reviewOpen || _isSubmitting) return;
+    final fromGallery = _isGalleryPhoto[index] == true;
+    setState(() {
+      _reviewOpen = true;
+      _currentStepIndex = index;
+    });
+    _cameraWanted = false;
+    try {
+      await _syncCamera();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).removeCurrentSnackBar();
+      final action = await Navigator.of(context).push<PhotoReviewAction>(
+        MaterialPageRoute(
+          builder: (_) => PhotoReviewScreen(
+            sideLabel: _steps[index].label,
+            imageBytes: bytes,
+            isFromGallery: fromGallery,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        if (action == PhotoReviewAction.retake) {
+          _capturedThumbnails.remove(index);
+          _thumbnailBytes.remove(index);
+          _isGalleryPhoto.remove(index);
+          _currentStepIndex = index;
+        } else if (!_hasBothPhotos) {
+          _currentStepIndex = _steps.asMap().keys.firstWhere(
+            (step) => !_capturedThumbnails.containsKey(step),
+          );
+        }
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _reviewOpen = false);
+        _cameraWanted =
+            WidgetsBinding.instance.lifecycleState ==
+                AppLifecycleState.resumed &&
+            !_isPickingGallery &&
+            !_historyOpen;
+        await _syncCamera();
+      }
+    }
+  }
+
+  void _onStepSelected(int index) {
+    if (_isBusy) return;
+    if (_thumbnailBytes.containsKey(index)) {
+      unawaited(_reviewCapturedPhoto(index));
+    } else {
+      setState(() => _currentStepIndex = index);
+    }
+  }
+
+  Future<void> _openHistory() async {
+    if (_isBusy) return;
+    setState(() => _historyOpen = true);
+    _cameraWanted = false;
+    try {
+      await _syncCamera();
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => const HistoryScreen()),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _historyOpen = false);
+        _cameraWanted =
+            WidgetsBinding.instance.lifecycleState ==
+                AppLifecycleState.resumed &&
+            !_analysisOpen &&
+            !_reviewOpen &&
+            !_isPickingGallery;
+        await _syncCamera();
+      }
+    }
+  }
+
+  Future<void> _submitPhotos() async {
+    if (!_hasBothPhotos || _isBusy || _changingFlash) return;
+    final images = Map<InspectionStepType, String>.unmodifiable({
+      for (var index = 0; index < _steps.length; index++)
+        _steps[index]: _capturedThumbnails[index]!,
+    });
+    setState(() {
+      _isSubmitting = true;
+      _analysisOpen = true;
+    });
+    _cameraWanted = false;
+    try {
+      await _syncCamera();
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => AnalysisScreen(
+            deviceName: widget.deviceName,
+            deviceImei: widget.deviceImei,
+            capturedImages: images,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _analysisOpen = false;
+        });
+        _cameraWanted =
+            WidgetsBinding.instance.lifecycleState ==
+                AppLifecycleState.resumed &&
+            !_isPickingGallery &&
+            !_historyOpen;
+        await _syncCamera();
+      }
+    }
   }
 
   @override
   void dispose() {
-    _previewAnimController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _cameraWanted = false;
+    unawaited(_syncCamera());
     super.dispose();
   }
 
-  /// Mở gallery để chọn ảnh thật.
-  Future<void> _onPickImageFromGallery() async {
-    if (_isPickingImage) return;
-    setState(() => _isPickingImage = true);
-
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 95,
-        requestFullMetadata: false,
-      );
-
-      if (pickedFile == null) {
-        // Người dùng huỷ chọn
-        return;
-      }
-
-      final file = File(pickedFile.path);
-      setState(() {
-        _selectedImageFile = file;
-        // Cập nhật thumbnail cho bước hiện tại
-        _capturedThumbnails[_currentStepIndex] = pickedFile.path;
-      });
-
-      // Chạy animation fade-in cho preview
-      _previewAnimController.reset();
-      _previewAnimController.forward();
-
-      HapticFeedback.mediumImpact();
-    } on PlatformException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể truy cập gallery: ${e.message}'),
-            backgroundColor: AppColors.defectCritical,
+  Widget _buildCameraViewport() {
+    final camera = _camera;
+    if (_cameraError != null) {
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.no_photography_outlined,
+                  size: 48,
+                  color: AppColors.textSecondaryDark,
+                ),
+                const SizedBox(height: 12),
+                Text(_cameraError!, textAlign: TextAlign.center),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () => unawaited(_syncCamera()),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Thử lại'),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      key: const ValueKey('pick-from-gallery-error-fallback'),
+                      onPressed: _isBusy ? null : () => _pickFromGallery(),
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('Chọn từ thư viện'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isPickingImage = false);
-    }
-  }
-
-  /// Chuyển sang màn hình phân tích với ảnh thật.
-  void _onAnalyze() {
-    if (_selectedImageFile == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng chọn ảnh từ gallery trước.'),
-          backgroundColor: AppColors.amberAccent,
-          behavior: SnackBarBehavior.floating,
         ),
       );
-      return;
     }
-
-    HapticFeedback.mediumImpact();
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AnalysisScreen(
-          deviceName: widget.deviceName,
-          deviceImei: widget.deviceImei,
-          imageFile: _selectedImageFile!,
-        ),
-      ),
-    );
-  }
-
-  // ignore: unused_element
-  void _onTriggerShutterMock() {
-    // TODO(TV2): Khi tích hợp camera thật, thay thế toàn bộ hàm này
-    if (kDebugMode) {
-      // Debug: chụp mock để test UI mà không cần ảnh thật
-      setState(() {
-        _capturedThumbnails[_currentStepIndex] =
-            "mock_img_path_${_currentStepIndex}.jpg";
-        if (_currentStepIndex < _steps.length - 1) {
-          _currentStepIndex++;
-        }
-      });
+    if (!_cameraReady || camera == null) {
+      return const Center(child: CircularProgressIndicator());
     }
+    return Center(child: CameraPreview(camera));
   }
 
   @override
   Widget build(BuildContext context) {
     final activeStep = _steps[_currentStepIndex];
-    final hasImage = _selectedImageFile != null;
+    final isReady = _cameraReady && !_isBusy;
 
     return Scaffold(
       backgroundColor: AppColors.darkCanvas,
       body: SafeArea(
         child: Stack(
           children: [
-            // 1. Camera Viewport — hiển thị ảnh thật nếu đã chọn, không thì hiện placeholder
+            // 1. Camera Viewport
             Positioned.fill(
-              child: hasImage
-                  ? FadeTransition(
-                      opacity: _previewFadeAnim,
-                      child: Image.file(
-                        _selectedImageFile!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      ),
-                    )
-                  : Container(
-                      color: const Color(0xFF14171B),
-                      child: Center(
-                        child: Opacity(
-                          opacity: 0.15,
-                          child: Icon(
-                            Icons.camera_alt_outlined,
-                            size: 120,
-                            color: AppColors.textSecondaryDark,
-                          ),
-                        ),
-                      ),
-                    ),
+              top: _cameraError != null ? 140 : 0,
+              bottom: _cameraError != null ? 330 : 0,
+              child: _buildCameraViewport(),
             ),
-
-            // Overlay tối nhẹ khi có ảnh để UI đọc được
-            if (hasImage)
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.55),
-                        Colors.transparent,
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.7),
-                      ],
-                      stops: const [0.0, 0.25, 0.65, 1.0],
-                    ),
-                  ),
-                ),
-              ),
 
             // 2. Khung ngắm căn chỉnh quang học
-            Positioned.fill(
-              child: CaptureGuideOverlay(
-                profile: _currentProfile,
-                isReady: hasImage,
+            if (_gridVisible && _cameraReady)
+              Positioned.fill(
+                child: CaptureGuideOverlay(
+                  profile: _currentProfile,
+                  isReady: isReady,
+                ),
               ),
-            ),
 
             // 3. Header điều khiển trên cùng
             Positioned(
@@ -230,18 +544,24 @@ class _CaptureScreenState extends State<CaptureScreen>
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       IconButton(
+                        key: const ValueKey('open-history-button'),
                         style: IconButton.styleFrom(
-                          backgroundColor: AppColors.darkSurface.withOpacity(0.8),
+                          backgroundColor: AppColors.darkSurface.withValues(
+                            alpha: 0.8,
+                          ),
                           minimumSize: const Size(44, 44),
                         ),
-                        icon: const Icon(Icons.arrow_back,
-                            size: 20, color: Colors.white),
-                        onPressed: () => Navigator.maybePop(context),
+                        icon: const Icon(
+                          Icons.history,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                        tooltip: 'Xem lịch sử quét',
+                        onPressed: _isBusy ? null : _openHistory,
                       ),
                       Expanded(
                         child: Padding(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -265,8 +585,9 @@ class _CaptureScreenState extends State<CaptureScreen>
                         children: [
                           IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor:
-                                  AppColors.darkSurface.withOpacity(0.8),
+                              backgroundColor: AppColors.darkSurface.withValues(
+                                alpha: 0.8,
+                              ),
                             ),
                             icon: Icon(
                               _flashTorch ? Icons.flash_on : Icons.flash_off,
@@ -275,14 +596,15 @@ class _CaptureScreenState extends State<CaptureScreen>
                                   ? AppColors.amberAccent
                                   : Colors.white,
                             ),
-                            onPressed: () =>
-                                setState(() => _flashTorch = !_flashTorch),
+                            tooltip: 'Bật/tắt đèn flash',
+                            onPressed: isReady ? _toggleFlash : null,
                           ),
                           const SizedBox(width: 6),
                           IconButton(
                             style: IconButton.styleFrom(
-                              backgroundColor:
-                                  AppColors.darkSurface.withOpacity(0.8),
+                              backgroundColor: AppColors.darkSurface.withValues(
+                                alpha: 0.8,
+                              ),
                             ),
                             icon: Icon(
                               _gridVisible ? Icons.grid_on : Icons.grid_off,
@@ -299,7 +621,10 @@ class _CaptureScreenState extends State<CaptureScreen>
                     ],
                   ),
                   const SizedBox(height: 12),
-                  QualityIndicatorHUD(condition: _condition),
+                  Text(
+                    'Chụp hoặc chọn ảnh 2 mặt, xem lại rồi bấm gửi',
+                    style: AppTypography.bodyMedium,
+                  ),
                 ],
               ),
             ),
@@ -312,23 +637,29 @@ class _CaptureScreenState extends State<CaptureScreen>
               child: Align(
                 alignment: Alignment.center,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
-                    color: AppColors.darkSurface.withOpacity(0.9),
+                    color: AppColors.darkSurface.withValues(alpha: 0.9),
                     border: Border.all(color: AppColors.darkBorder),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.compass_calibration_outlined,
-                          size: 14, color: AppColors.amberAccent),
+                      const Icon(
+                        Icons.compass_calibration_outlined,
+                        size: 14,
+                        color: AppColors.amberAccent,
+                      ),
                       const SizedBox(width: 8),
                       Text(
-                        'HƯỚNG CHỤP: ${activeStep.label.toUpperCase()}',
-                        style: AppTypography.labelCaps
-                            .copyWith(color: Colors.white),
+                        'HƯỚNG: ${activeStep.label.toUpperCase()}',
+                        style: AppTypography.labelCaps.copyWith(
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -344,10 +675,12 @@ class _CaptureScreenState extends State<CaptureScreen>
               child: Container(
                 padding: const EdgeInsets.only(top: 14, bottom: 20),
                 decoration: BoxDecoration(
-                  color: AppColors.darkCanvas.withOpacity(0.95),
+                  color: AppColors.darkCanvas.withValues(alpha: 0.95),
                   border: const Border(
                     top: BorderSide(
-                        color: AppColors.darkBorderSubtle, width: 1),
+                      color: AppColors.darkBorderSubtle,
+                      width: 1,
+                    ),
                   ),
                 ),
                 child: Column(
@@ -357,38 +690,44 @@ class _CaptureScreenState extends State<CaptureScreen>
                       steps: _steps,
                       activeIndex: _currentStepIndex,
                       capturedThumbnails: _capturedThumbnails,
-                      onStepSelected: (index) =>
-                          setState(() => _currentStepIndex = index),
+                      thumbnailBytes: _thumbnailBytes,
+                      onStepSelected: _onStepSelected,
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 14),
                     Padding(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 24),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Dropdown loại thiết bị
                           DropdownButtonHideUnderline(
                             child: DropdownButton<DeviceProfile>(
                               value: _currentProfile,
                               dropdownColor: AppColors.darkSurfaceElevated,
-                              icon: const Icon(Icons.arrow_drop_down,
-                                  color: AppColors.textSecondaryDark),
+                              icon: const Icon(
+                                Icons.arrow_drop_down,
+                                color: AppColors.textSecondaryDark,
+                              ),
                               items: const [
                                 DropdownMenuItem(
                                   value: DeviceProfile.smartphone,
-                                  child: Text('Smartphone',
-                                      style: TextStyle(fontSize: 12)),
+                                  child: Text(
+                                    'Smartphone',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: DeviceProfile.keyboard,
-                                  child: Text('Bàn phím',
-                                      style: TextStyle(fontSize: 12)),
+                                  child: Text(
+                                    'Bàn phím',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: DeviceProfile.laptop,
-                                  child: Text('Laptop',
-                                      style: TextStyle(fontSize: 12)),
+                                  child: Text(
+                                    'Laptop',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
                                 ),
                               ],
                               onChanged: (val) {
@@ -398,97 +737,109 @@ class _CaptureScreenState extends State<CaptureScreen>
                               },
                             ),
                           ),
-
-                          // Nút chọn ảnh từ gallery (thay nút shutter mock)
                           GestureDetector(
-                            onTap: _isPickingImage
-                                ? null
-                                : _onPickImageFromGallery,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
+                            key: const ValueKey('capture-shutter'),
+                            onTap: isReady ? _onTriggerShutter : null,
+                            child: Container(
                               width: 76,
                               height: 76,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 border: Border.all(
-                                  color: hasImage
-                                      ? AppColors.statusPass
-                                      : AppColors.amberAccent,
+                                  color: isReady
+                                      ? AppColors.amberAccent
+                                      : AppColors.darkBorder,
                                   width: 3,
                                 ),
                               ),
                               child: Center(
-                                child: _isPickingImage
-                                    ? const SizedBox(
-                                        width: 28,
-                                        height: 28,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          color: AppColors.amberAccent,
-                                        ),
-                                      )
-                                    : AnimatedContainer(
-                                        duration:
-                                            const Duration(milliseconds: 150),
-                                        width: hasImage ? 60 : 56,
-                                        height: hasImage ? 60 : 56,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: hasImage
-                                              ? AppColors.statusPass
-                                              : AppColors.amberAccent
-                                                  .withOpacity(0.15),
-                                          border: Border.all(
-                                            color: hasImage
-                                                ? AppColors.statusPass
-                                                : AppColors.amberAccent,
-                                            width: 1.5,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 150),
+                                  width: isReady ? 60 : 54,
+                                  height: isReady ? 60 : 54,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isReady
+                                        ? AppColors.amberAccent
+                                        : AppColors.darkBorder,
+                                  ),
+                                  child: _isCapturing
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(16),
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
                                           ),
+                                        )
+                                      : isReady
+                                      ? null
+                                      : const Icon(
+                                          Icons.lock_outline,
+                                          size: 22,
+                                          color: AppColors.textMutedDark,
                                         ),
-                                        child: Icon(
-                                          hasImage
-                                              ? Icons.check
-                                              : Icons.photo_library_outlined,
-                                          size: 26,
-                                          color: hasImage
-                                              ? Colors.white
-                                              : AppColors.amberAccent,
-                                        ),
-                                      ),
+                                ),
                               ),
                             ),
                           ),
-
-                          // Nút Phân tích (chỉ active khi đã có ảnh)
-                          AnimatedOpacity(
-                            opacity: hasImage ? 1.0 : 0.4,
-                            duration: const Duration(milliseconds: 200),
-                            child: IconButton(
-                              iconSize: 26,
-                              color: hasImage
-                                  ? AppColors.amberAccent
-                                  : AppColors.textSecondaryDark,
-                              tooltip: hasImage
-                                  ? 'Phân tích ảnh'
-                                  : 'Chọn ảnh trước',
-                              icon: const Icon(Icons.play_circle_fill_rounded),
-                              onPressed: hasImage ? _onAnalyze : null,
-                            ),
+                          IconButton(
+                            iconSize: 26,
+                            color: AppColors.textSecondaryDark,
+                            tooltip: 'Chụp/chọn lại góc này',
+                            icon: const Icon(Icons.replay),
+                            onPressed: _isBusy
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _capturedThumbnails.remove(
+                                        _currentStepIndex,
+                                      );
+                                      _thumbnailBytes.remove(_currentStepIndex);
+                                      _isGalleryPhoto.remove(_currentStepIndex);
+                                    });
+                                    HapticFeedback.selectionClick();
+                                  },
                           ),
                         ],
                       ),
                     ),
-
-                    // Label hướng dẫn nhỏ bên dưới
-                    const SizedBox(height: 6),
-                    Text(
-                      hasImage
-                          ? 'Ảnh đã chọn — bấm ▶ để phân tích'
-                          : 'Bấm  để chọn ảnh từ gallery',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMutedDark,
-                        letterSpacing: 0.3,
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              key: const ValueKey('pick-from-gallery-button'),
+                              onPressed: _isBusy
+                                  ? null
+                                  : () => _pickFromGallery(
+                                        targetIndex: _currentStepIndex,
+                                      ),
+                              icon: const Icon(
+                                Icons.photo_library_outlined,
+                                size: 18,
+                              ),
+                              label: Text(
+                                'Chọn ảnh thư viện (${activeStep.label})',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              key: const ValueKey('submit-photos'),
+                              onPressed: _hasBothPhotos && !_isBusy
+                                  ? _submitPhotos
+                                  : null,
+                              icon: const Icon(Icons.send_outlined),
+                              label: Text(
+                                'Gửi để phân tích (${_capturedThumbnails.length}/2)',
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

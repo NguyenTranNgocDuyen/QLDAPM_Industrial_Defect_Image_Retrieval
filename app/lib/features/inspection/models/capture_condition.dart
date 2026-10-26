@@ -43,7 +43,7 @@ enum DeviceProfile {
 
 enum InspectionStepType {
   front('Mặt trước', 'ALIGN_FRONT'),
-  back('Mặt lưng', 'ALIGN_BACK'),
+  back('Mặt sau', 'ALIGN_BACK'),
   edgeTop('Cạnh trên', 'ALIGN_EDGE_TOP'),
   edgeBottom('Cạnh dưới', 'ALIGN_EDGE_BOT'),
   edgeLeft('Cạnh trái', 'ALIGN_EDGE_LEFT'),

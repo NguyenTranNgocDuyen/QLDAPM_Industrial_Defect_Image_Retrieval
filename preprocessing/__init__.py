@@ -1,5 +1,4 @@
-"""Reusable image preprocessing utilities for the binary classifier."""
+"""Offline, report-oriented image preprocessing tools.
 
-from .pipeline import PreprocessConfig, preprocess_image
-
-__all__ = ["PreprocessConfig", "preprocess_image"]
+Nothing in this package is part of the phone damage v3 inference input.
+"""

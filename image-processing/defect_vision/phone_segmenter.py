@@ -1,0 +1,615 @@
+"""Phone segmentation and corner-guided perspective correction module.
+
+Uses the trained RF-DETR segmentation model (weights.pt) to segment the smartphone
+body/screen, extracts its 4 geometric corners with sub-pixel edge refinement, and
+applies perspective correction to produce front-facing, rectified device images.
+"""
+
+from __future__ import annotations
+
+import importlib
+from dataclasses import dataclass
+from pathlib import Path
+from time import perf_counter
+from typing import Sequence
+
+import cv2
+import numpy as np
+from numpy.typing import NDArray
+
+from .corner_expansion import expand_quad_to_mask
+
+from .perspective import (
+    Image,
+    PerspectiveCorrectionError,
+    PerspectiveResult,
+    PointArray,
+    correct_perspective,
+    draw_corners,
+    make_before_after,
+    order_corners,
+)
+
+DEFAULT_PHONE_MODEL = (Path(__file__).resolve().parents[1] / 'phone_damage_v3_kit' /
+                       'phone_damage_v3' / 'weights' / 'phone_detect.pt')
+
+
+class PhoneSegmenterError(ValueError):
+    """Raised when phone segmentation or corner detection fails."""
+
+
+@dataclass(frozen=True)
+class PhoneSegmentationResult:
+    """Full results from segmentation, corner extraction, and perspective rectification."""
+
+    image: Image
+    mask: Image
+    confidence: float
+    corners: PointArray
+    perspective_result: PerspectiveResult
+    corner_preview: Image
+    mask_overlay: Image
+    before_after: Image
+    timings_ms: dict[str, float]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "confidence": round(float(self.confidence), 4),
+            "corners": self.corners.round(3).tolist(),
+            "outputWidth": self.perspective_result.output_width,
+            "outputHeight": self.perspective_result.output_height,
+            "timings_ms": {k: round(v, 3) for k, v in self.timings_ms.items()},
+            "transformMatrix": self.perspective_result.transform_matrix.round(8).tolist(),
+        }
+
+
+def _intersect_lines(l1: NDArray[np.float32], l2: NDArray[np.float32]) -> NDArray[np.float32] | None:
+    """Intersect two 2D lines given in (vx, vy, x0, y0) format."""
+    vx1, vy1, x1, y1 = [float(v) for v in l1]
+    vx2, vy2, x2, y2 = [float(v) for v in l2]
+    a1, b1 = vy1, -vx1
+    c1 = vy1 * x1 - vx1 * y1
+    a2, b2 = vy2, -vx2
+    c2 = vy2 * x2 - vx2 * y2
+    det = a1 * b2 - a2 * b1
+    if abs(det) < 1e-5:
+        return None
+    x = (c1 * b2 - c2 * b1) / det
+    y = (a1 * c2 - a2 * c1) / det
+    return np.array([x, y], dtype=np.float32)
+
+
+def refine_corners_via_edges(
+    contour: NDArray[np.int32],
+    quad: PointArray,
+    margin_ratio: float = 0.15,
+    dist_threshold: float = 8.0,
+) -> PointArray:
+    """Refine initial polygon corners by fitting lines to straight edges and intersecting them.
+
+    This overcomes rounded corners and bevels on modern smartphones by finding the
+    true physical intersection of the four device edges.
+    """
+    pts = contour.reshape(-1, 2).astype(np.float32)
+    lines: list[NDArray[np.float32]] = []
+
+    for i in range(4):
+        p1 = quad[i]
+        p2 = quad[(i + 1) % 4]
+        v = p2 - p1
+        v_norm = float(np.linalg.norm(v))
+        if v_norm < 1e-3:
+            return quad
+        u = v / v_norm
+        dists_along = np.dot(pts - p1, u)
+        perp_vec = np.array([-u[1], u[0]], dtype=np.float32)
+        dists_perp = np.abs(np.dot(pts - p1, perp_vec))
+
+        edge_mask = (
+            (dists_along > margin_ratio * v_norm)
+            & (dists_along < (1.0 - margin_ratio) * v_norm)
+            & (dists_perp < dist_threshold)
+        )
+        edge_pts = pts[edge_mask]
+
+        if len(edge_pts) >= 6:
+            line = cv2.fitLine(edge_pts, cv2.DIST_L2, 0, 0.01, 0.01).flatten()
+            lines.append(line.astype(np.float32))
+        else:
+            lines.append(np.array([u[0], u[1], p1[0], p1[1]], dtype=np.float32))
+
+    refined: list[list[float]] = []
+    for i in range(4):
+        pt = _intersect_lines(lines[(i - 1) % 4], lines[i])
+        if pt is None:
+            return quad
+        refined.append([float(pt[0]), float(pt[1])])
+
+    refined_arr = np.array(refined, dtype=np.float32)
+    try:
+        ordered = order_corners(refined_arr)
+        orig_area = abs(cv2.contourArea(quad))
+        ref_area = abs(cv2.contourArea(ordered))
+        if 0.80 <= ref_area / max(orig_area, 1.0) <= 1.20:
+            return ordered
+    except Exception:
+        pass
+    return quad
+
+
+def _recover_clipped_edges(
+    contour: NDArray[np.int32],
+    initial_quad: PointArray,
+    refined_quad: PointArray,
+    mask_shape: tuple[int, int],
+    image_shape: tuple[int, int] | None,
+) -> PointArray:
+    """Retry a narrow edge fit only when it demonstrably clips the phone contour.
+
+    Polygon approximation can place a chord inside a rounded phone edge, beyond
+    the legacy 8-pixel search band. A scale-relative retry may reach that edge.
+    Keep the legacy result unless coverage improves without substantial growth,
+    corner movement, or inclusion of background. This cannot repair a mask that
+    itself misses part of the phone.
+    """
+    body = np.zeros(mask_shape, dtype=np.uint8)
+    cv2.drawContours(body, [contour], -1, 1, cv2.FILLED)
+    body_area = np.count_nonzero(body)
+    if body_area == 0:
+        return refined_quad
+
+    def coverage(quad: PointArray) -> tuple[float, float]:
+        polygon = np.zeros_like(body)
+        cv2.fillConvexPoly(polygon, np.round(quad).astype(np.int32), 1)
+        overlap = np.count_nonzero(body & polygon)
+        polygon_area = np.count_nonzero(polygon)
+        return overlap / body_area, (polygon_area - overlap) / max(polygon_area, 1)
+
+    def bounded(quad: PointArray) -> PointArray:
+        result = quad.copy()
+        if image_shape is not None:
+            h, w = image_shape[:2]
+            result[:, 0] = np.clip(result[:, 0], 0, w - 1)
+            result[:, 1] = np.clip(result[:, 1], 0, h - 1)
+        return result
+
+    baseline = bounded(refined_quad)
+    baseline_coverage, _ = coverage(baseline)
+    if baseline_coverage >= 0.98:
+        return refined_quad
+
+    short_edge = float(np.min(np.linalg.norm(np.roll(initial_quad, -1, axis=0) - initial_quad, axis=1)))
+    search_band = max(8.0, 0.10 * short_edge)
+    if search_band <= 8.0:
+        return refined_quad
+    candidate = refine_corners_via_edges(contour, initial_quad, dist_threshold=search_band)
+    # Preserve well-supported legacy edges even when a different edge clips the
+    # phone. A concavity in the mask must not rotate an already adequate edge.
+    body_y, body_x = np.nonzero(body)
+    lines = []
+    for i in range(4):
+        p = refined_quad[i]
+        edge = refined_quad[(i + 1) % 4] - p
+        side = edge[0] * (body_y - p[1]) - edge[1] * (body_x - p[0])
+        outside_fraction = np.count_nonzero(side < 0) / body_area
+        selected = refined_quad if outside_fraction <= 0.01 else candidate
+        direction = selected[(i + 1) % 4] - selected[i]
+        length = float(np.linalg.norm(direction))
+        if length < 1e-3:
+            return refined_quad
+        lines.append(np.concatenate((direction / length, selected[i])))
+    intersections = [_intersect_lines(lines[(i - 1) % 4], lines[i]) for i in range(4)]
+    if any(point is None for point in intersections):
+        return refined_quad
+    candidate = bounded(np.asarray(intersections, dtype=np.float32))
+    try:
+        candidate = order_corners(candidate)
+    except PerspectiveCorrectionError:
+        return refined_quad
+
+    # Compare corresponding corners; avoid accepting a changed starting corner
+    # from ordering or a large geometric jump near the image boundary.
+    if np.max(np.linalg.norm(candidate - baseline, axis=1)) > 0.20 * short_edge:
+        return refined_quad
+    area_ratio = abs(cv2.contourArea(candidate)) / max(abs(cv2.contourArea(baseline)), 1.0)
+    if not 1.0 <= area_ratio <= 1.20:
+        return refined_quad
+    candidate_coverage, background_fraction = coverage(candidate)
+    if candidate_coverage >= baseline_coverage + 0.005 and background_fraction <= 0.03:
+        return candidate
+    return refined_quad
+
+
+def extract_corners_from_mask(
+    mask: Image,
+    image_shape: tuple[int, int] | None = None,
+    *,
+    refine_edges: bool = True,
+    adaptive_refinement: bool = True,
+    expand_to_mask: bool = True,
+    corner_diagnostics: dict | None = None,
+    min_area: float = 1000.0,
+) -> PointArray | None:
+    """Extract the 4 corners of a smartphone from its segmentation mask.
+
+    Multi-tier algorithm:
+    1. Morphological closing to seal internal cracks or holes.
+    2. Convex hull calculation on the dominant contour.
+    3. Multi-factor adaptive `approxPolyDP` to identify the 4-vertex quadrilateral.
+    4. Fallback to extremal diagonal projection or minimum area bounding box.
+    5. Sub-pixel straight-edge line fitting (`refine_corners_via_edges`) to eliminate rounded corner error.
+    6. Guarded, scale-relative retry if the fitted quad clips the phone contour.
+    7. Bounded expansion of clipped edges against the unchanged source mask.
+
+    Set ``adaptive_refinement=False`` to reproduce the legacy 8-pixel edge fit.
+    ``refine_edges=False`` disables both edge-fitting passes.
+    """
+    if not isinstance(mask, np.ndarray) or mask.size == 0:
+        return None
+
+    bin_mask = (mask > 0).astype(np.uint8) * 255
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    closed = cv2.morphologyEx(bin_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    contour = max(contours, key=cv2.contourArea)
+    area = cv2.contourArea(contour)
+    if area < min_area:
+        return None
+
+    hull = cv2.convexHull(contour)
+    peri = cv2.arcLength(hull, True)
+    if peri < 10.0:
+        return None
+
+    quad: PointArray | None = None
+
+    # Step 1: Adaptive polygon approximation across epsilon factors
+    for factor in np.linspace(0.015, 0.085, 30):
+        approx = cv2.approxPolyDP(hull, factor * peri, True)
+        if len(approx) == 4 and cv2.isContourConvex(approx):
+            quad = approx.reshape(4, 2).astype(np.float32)
+            break
+
+    # Step 2: Extremal projection fallback
+    if quad is None:
+        pts = hull.reshape(-1, 2).astype(np.float32)
+        if len(pts) >= 4:
+            s = pts.sum(axis=1)
+            d = pts[:, 0] - pts[:, 1]
+            candidate = np.array(
+                [pts[np.argmin(s)], pts[np.argmax(d)], pts[np.argmax(s)], pts[np.argmin(d)]],
+                dtype=np.float32,
+            )
+            try:
+                quad = order_corners(candidate)
+            except Exception:
+                quad = None
+
+    # Step 3: Minimum area bounding box fallback
+    if quad is None:
+        box = cv2.boxPoints(cv2.minAreaRect(hull)).astype(np.float32)
+        try:
+            quad = order_corners(box)
+        except Exception:
+            return None
+
+    try:
+        quad = order_corners(quad)
+    except Exception:
+        return None
+
+    # Step 4: Optional straight edge refinement
+    if refine_edges:
+        initial_quad = quad.copy()
+        quad = refine_corners_via_edges(contour, quad)
+        if adaptive_refinement:
+            quad = _recover_clipped_edges(contour, initial_quad, quad, closed.shape, image_shape)
+
+    # Step 5: Coordinate boundary clipping if image_shape provided
+    if image_shape is not None:
+        h, w = image_shape[:2]
+        quad[:, 0] = np.clip(quad[:, 0], 0, w - 1)
+        quad[:, 1] = np.clip(quad[:, 1], 0, h - 1)
+
+    if refine_edges and adaptive_refinement and expand_to_mask:
+        quad, report = expand_quad_to_mask(mask, quad)
+        if corner_diagnostics is not None:
+            corner_diagnostics.update(report)
+
+    return quad
+
+
+def make_mask_overlay(image: Image, mask: Image, alpha: float = 0.45) -> Image:
+    """Create a translucent color overlay of the segmentation mask on the image."""
+    bgr = image.copy()
+    if bgr.ndim == 2:
+        bgr = cv2.cvtColor(bgr, cv2.COLOR_GRAY2BGR)
+    elif bgr.shape[2] == 4:
+        bgr = cv2.cvtColor(bgr, cv2.COLOR_BGRA2BGR)
+
+    color_mask = np.zeros_like(bgr)
+    color_mask[mask > 0] = [0, 255, 128]  # Light emerald green
+
+    overlay = cv2.addWeighted(color_mask, alpha, bgr, 1.0 - alpha, 0)
+    binary_mask = (mask > 0).astype(np.uint8) * 255
+    contours, _ = cv2.findContours(binary_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(overlay, contours, -1, (0, 255, 0), 2, cv2.LINE_AA)
+    return overlay
+
+
+class PhoneSegmenter:
+    """Manages phone segmentation and corner-guided perspective rectification.
+
+    The default is the hash-checked RF-DETR checkpoint in phone_damage_v3_kit.
+    Missing protocol weights fail explicitly. A legacy Roboflow backend remains
+    available only when a caller explicitly chooses another checkpoint path.
+    """
+
+    def __init__(
+        self,
+        model_path: str | Path = DEFAULT_PHONE_MODEL,
+        *,
+        model_id: str = "phone-segmentation-uiymg/1",
+        api_key: str | None = None,
+        confidence: float = 0.3,
+        device: str = "cpu",
+        num_classes: int = 1,
+        refine_edges: bool = True,
+        expected_sha256: str | None = None,
+    ) -> None:
+        self.model_path = Path(model_path)
+        self.model_id = model_id
+        self.api_key = api_key
+        self.confidence = float(confidence)
+        self.device = device
+        self.num_classes = int(num_classes)
+        self.refine_edges = bool(refine_edges)
+        self.expected_sha256 = expected_sha256
+        if self.model_path == DEFAULT_PHONE_MODEL and self.expected_sha256 is None:
+            import json
+            protocol = json.loads(DEFAULT_PHONE_MODEL.with_name('protocol.json').read_text('utf-8'))
+            self.expected_sha256 = protocol['phone_model_sha256']
+        self.last_instance_count = 0
+        self._model = None
+        self._backend: str | None = None  # 'rfdetr' or 'roboflow_inference'
+
+    def _resolve_api_key(self) -> str | None:
+        if self.api_key:
+            return self.api_key
+        import os
+
+        env_key = os.environ.get("ROBOFLOW_API_KEY")
+        if env_key:
+            return env_key
+        try:
+            import dotenv
+
+            # Check cwd, image-processing root, and repository root for .env
+            env_candidates = [
+                Path.cwd() / ".env",
+                Path(__file__).resolve().parent.parent / ".env",
+                Path(__file__).resolve().parent.parent.parent / ".env",
+            ]
+            for candidate in env_candidates:
+                if candidate.is_file():
+                    dotenv.load_dotenv(dotenv_path=candidate, override=False)
+                    break
+            else:
+                dotenv.load_dotenv()
+            return os.environ.get("ROBOFLOW_API_KEY")
+        except Exception:
+            return None
+
+    def _resolve_model_id(self) -> str:
+        if self.model_id and self.model_id != "phone-segmentation-uiymg/1":
+            return self.model_id
+        import os
+
+        return os.environ.get("ROBOFLOW_PHONE_MODEL_ID", self.model_id)
+
+    def _load_model(self):
+        if self._model is not None:
+            return self._model
+
+        # 1. Check if local model file exists
+        candidates = [
+            self.model_path,
+            Path("image-processing") / self.model_path,
+            Path(__file__).parent.parent / self.model_path,
+        ]
+        resolved_local: Path | None = None
+        for candidate in candidates:
+            if candidate.is_file():
+                resolved_local = candidate
+                break
+
+        if resolved_local is not None:
+            self.model_path = resolved_local
+            if self.expected_sha256:
+                import hashlib
+                with resolved_local.open('rb') as stream:
+                    actual_hash = hashlib.file_digest(stream, 'sha256').hexdigest()
+                if actual_hash != self.expected_sha256:
+                    raise PhoneSegmenterError('Phone checkpoint hash differs from damage protocol.')
+            try:
+                rfdetr = importlib.import_module("rfdetr")
+            except ImportError as exc:
+                raise PhoneSegmenterError(
+                    "The 'rfdetr' package is required for local phone segmentation. "
+                    "Install it using: pip install rfdetr supervision torch torchvision"
+                ) from exc
+
+            RFDETRSegSmall = getattr(rfdetr, "RFDETRSegSmall", None)
+            if RFDETRSegSmall is None:
+                raise PhoneSegmenterError("RFDETRSegSmall class not found in rfdetr package.")
+
+            self._model = RFDETRSegSmall(
+                pretrain_weights=str(self.model_path),
+                num_classes=self.num_classes,
+                device=self.device,
+            )
+            if self.expected_sha256:
+                import torch
+                state = torch.load(self.model_path, map_location='cpu', weights_only=True)['model']
+                network = self._model.model.model
+                incompatible = network.load_state_dict(state, strict=False)
+                missing = set(incompatible.missing_keys) - {'_kp_active_mask'}
+                if missing or incompatible.unexpected_keys:
+                    raise PhoneSegmenterError(f'Phone architecture mismatch: {missing}, {incompatible.unexpected_keys}')
+                network.requires_grad_(False)
+            self._backend = "rfdetr"
+            return self._model
+
+        if self.expected_sha256:
+            raise PhoneSegmenterError(f'Protocol phone detector not found: {self.model_path}')
+
+        # 2. Local model not found; attempt automatic download via Roboflow Inference
+        api_key = self._resolve_api_key()
+        resolved_model_id = self._resolve_model_id()
+        if api_key:
+            try:
+                import inference
+
+                print(
+                    f"[PhoneSegmenter] Local weights not found. "
+                    f"Auto-downloading / initializing model '{resolved_model_id}' from Roboflow..."
+                )
+                self._model = inference.get_model(
+                    model_id=resolved_model_id,
+                    api_key=api_key,
+                )
+                self._backend = "roboflow_inference"
+                return self._model
+            except Exception as exc:
+                raise PhoneSegmenterError(
+                    f"Failed to auto-download model '{resolved_model_id}' via Roboflow Inference: {exc}"
+                ) from exc
+
+        # 3. Neither local file nor API key available
+        raise PhoneSegmenterError(
+            f"Phone segmentation model not found at '{self.model_path}', and no ROBOFLOW_API_KEY was found.\n"
+            f"To enable phone perspective correction, choose one of these options:\n"
+            f"  1) Set your Roboflow API key in .env (ROBOFLOW_API_KEY=your_key) or pass --api-key.\n"
+            f"  2) Run pre-download: python scripts/download_model.py --api-key your_key\n"
+            f"  3) Or place 'weights.pt' into 'image-processing/models/weights.pt'."
+        )
+
+    def predict_mask(self, image: Image) -> tuple[Image | None, float]:
+        """Run segmentation model and return binary mask and confidence score."""
+        model = self._load_model()
+        bgr = image
+        if image.ndim == 2:
+            bgr = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        elif image.shape[2] == 4:
+            bgr = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
+
+        if self._backend == "rfdetr":
+            from PIL import Image as PILImage
+            detections = model.predict(PILImage.fromarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)), threshold=self.confidence)
+            self.last_instance_count = len(detections.xyxy)
+            if len(detections.xyxy) == 0 or detections.mask is None:
+                return None, 0.0
+
+            best_idx = int(np.argmax(detections.confidence))
+            best_conf = float(detections.confidence[best_idx])
+            raw_mask = detections.mask[best_idx]
+            mask_uint8 = (raw_mask.astype(np.uint8) * 255)
+            if mask_uint8.shape != bgr.shape[:2]:
+                raise PhoneSegmenterError('Phone mask does not match original image coordinates.')
+            return mask_uint8, best_conf
+
+        elif self._backend == "roboflow_inference":
+            infer_result = model.infer(bgr)
+            res = infer_result[0] if isinstance(infer_result, list) else infer_result
+            import supervision as sv
+
+            detections = sv.Detections.from_inference(res)
+            if len(detections.xyxy) == 0 or detections.mask is None:
+                return None, 0.0
+
+            best_idx = int(np.argmax(detections.confidence))
+            best_conf = float(detections.confidence[best_idx])
+            mask_uint8 = (detections.mask[best_idx].astype(np.uint8) * 255)
+            return mask_uint8, best_conf
+
+        return None, 0.0
+
+    def segment_and_correct(self, image: Image) -> PhoneSegmentationResult:
+        """End-to-end pipeline: segment phone -> extract 4 corners -> perspective correct."""
+        timings: dict[str, float] = {}
+
+        # Stage 1: Segmentation
+        t0 = perf_counter()
+        mask, conf = self.predict_mask(image)
+        timings["segmentation_ms"] = (perf_counter() - t0) * 1000.0
+
+        if mask is None:
+            raise PhoneSegmenterError("No phone detected by the segmentation model.")
+
+        # Stage 2: Corner extraction
+        t0 = perf_counter()
+        corners = extract_corners_from_mask(
+            mask,
+            image_shape=image.shape[:2],
+            refine_edges=self.refine_edges,
+        )
+        timings["corner_extraction_ms"] = (perf_counter() - t0) * 1000.0
+
+        if corners is None:
+            raise PhoneSegmenterError(
+                "Could not extract 4 quadrilateral corners from phone segmentation mask."
+            )
+
+        # Stage 3: Perspective correction
+        t0 = perf_counter()
+        persp_res = correct_perspective(image, corners)
+        timings["perspective_ms"] = (perf_counter() - t0) * 1000.0
+        timings["total_ms"] = sum(timings.values())
+
+        # Stage 4: Visualizations
+        corner_preview = draw_corners(image, corners)
+        mask_overlay = make_mask_overlay(image, mask)
+        before_after = make_before_after(corner_preview, persp_res.image)
+
+        return PhoneSegmentationResult(
+            image=image,
+            mask=mask,
+            confidence=conf,
+            corners=corners,
+            perspective_result=persp_res,
+            corner_preview=corner_preview,
+            mask_overlay=mask_overlay,
+            before_after=before_after,
+            timings_ms=timings,
+        )
+
+
+def detect_phone_corners_segmentation(
+    image: Image,
+    model_path: str | Path = DEFAULT_PHONE_MODEL,
+    *,
+    model_id: str = "phone-segmentation-uiymg/1",
+    api_key: str | None = None,
+    confidence: float = 0.3,
+    refine_edges: bool = True,
+) -> PointArray | None:
+    """Convenience helper to extract phone corners using the trained segmentation model."""
+    segmenter = PhoneSegmenter(
+        model_path=model_path,
+        model_id=model_id,
+        api_key=api_key,
+        confidence=confidence,
+        refine_edges=refine_edges,
+    )
+    mask, _ = segmenter.predict_mask(image)
+    if mask is None:
+        return None
+    return extract_corners_from_mask(
+        mask,
+        image_shape=image.shape[:2],
+        refine_edges=refine_edges,
+    )

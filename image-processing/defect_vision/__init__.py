@@ -55,9 +55,41 @@ from .perspective import (
     PerspectiveCorrectionError,
     PerspectiveResult,
     correct_perspective,
+    detect_device_corners,
     draw_corners,
     make_before_after,
     order_corners,
+)
+from .phone_segmenter import (
+    PhoneSegmentationResult,
+    PhoneSegmenter,
+    PhoneSegmenterError,
+    detect_phone_corners_segmentation,
+    extract_corners_from_mask,
+    make_mask_overlay,
+)
+from .download_model import (
+    download_from_url,
+    download_via_roboflow,
+    run_model_check,
+)
+from .pipeline import (
+    PipelineConfig,
+    PipelineError,
+    PipelineResult,
+    run_preprocessing_pipeline,
+    save_pipeline_artifacts,
+)
+from .yolo_baseline import (
+    MockYoloDetector,
+    UltralyticsYoloDetector,
+    YoloBaselineConfig,
+    YoloBaselineError,
+    YoloDetection,
+    annotate_detections,
+    build_detector,
+    run_baseline_inference,
+    save_result,
 )
 
 __all__ = [
@@ -76,6 +108,9 @@ __all__ = [
     "LuminanceStats",
     "PerspectiveCorrectionError",
     "PerspectiveResult",
+    "PipelineConfig",
+    "PipelineError",
+    "PipelineResult",
     "add_gaussian_noise",
     "adjust_brightness_contrast",
     "analyze_color_space",
@@ -91,6 +126,7 @@ __all__ = [
     "convert_color_space",
     "correct_illumination",
     "correct_perspective",
+    "detect_device_corners",
     "draw_bounding_boxes",
     "draw_corners",
     "estimate_background_noise",
@@ -108,8 +144,28 @@ __all__ = [
     "make_comparison_grid",
     "order_corners",
     "rotate_image_and_boxes",
+    "run_baseline_inference",
+    "run_preprocessing_pipeline",
+    "save_pipeline_artifacts",
+    "save_result",
     "split_channels",
     "vertical_flip",
+    "MockYoloDetector",
+    "PhoneSegmentationResult",
+    "PhoneSegmenter",
+    "PhoneSegmenterError",
+    "UltralyticsYoloDetector",
+    "YoloBaselineConfig",
+    "YoloBaselineError",
+    "YoloDetection",
+    "annotate_detections",
+    "build_detector",
+    "detect_phone_corners_segmentation",
+    "download_from_url",
+    "download_via_roboflow",
+    "extract_corners_from_mask",
+    "make_mask_overlay",
+    "run_model_check",
 ]
 
 

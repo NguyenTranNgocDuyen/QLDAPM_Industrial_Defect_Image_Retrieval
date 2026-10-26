@@ -1,0 +1,1 @@
+import 'package:flutter/material.dart'; class KeyboardCaptureScreen extends StatelessWidget { const KeyboardCaptureScreen({super.key}); @override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Kiểm tra bàn phím')),body:const Center(child:Text('Chụp hoặc chọn một ảnh bàn phím rõ, đủ sáng.')));}

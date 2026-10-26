@@ -1,0 +1,3 @@
+source,license,image_path,damage_mask_path,body_mask_path,annotation_id,group_id,split,sha256
+local,test-license,tv1-test-artifacts\manifest\image.png,tv1-test-artifacts\manifest\damage.png,tv1-test-artifacts\manifest\body.png,a1,device-1,test,542bd90ebe6cb838207db3fafbbd4481a86b23360714c1cc5cc8450bce507e64
+local,test-license,tv1-test-artifacts\manifest\image.png,tv1-test-artifacts\manifest\damage.png,tv1-test-artifacts\manifest\body.png,a1,device-1,train,542bd90ebe6cb838207db3fafbbd4481a86b23360714c1cc5cc8450bce507e64

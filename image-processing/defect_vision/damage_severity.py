@@ -21,7 +21,14 @@ LEVELS = (None, "minor", "moderate", "severe")
 
 
 def load_config(path=None):
-    config = json.loads(Path(path or Path(__file__).with_name("severity.v6.json")).read_text("utf-8"))
+    # Support CLI/tests launched either from ``image-processing`` or from the
+    # repository root.  Existing absolute/custom paths retain priority.
+    requested = Path(path) if path else Path(__file__).with_name("severity.v6.json")
+    if path and not requested.is_absolute() and not requested.is_file():
+        package_relative = Path(__file__).parent / requested.name
+        if package_relative.is_file():
+            requested = package_relative
+    config = json.loads(requested.read_text("utf-8"))
     if not isinstance(config.get("version"), str) or not config["version"]:
         raise ValueError("Severity configuration needs a version.")
     if config.get("heuristic_unvalidated") is not True:

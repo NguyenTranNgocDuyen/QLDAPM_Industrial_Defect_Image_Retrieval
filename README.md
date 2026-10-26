@@ -8,17 +8,17 @@ Hệ thống phát hiện lỗi ngoại quan trên thiết bị điện tử b�
 flowchart LR
     A[Flutter App] -->|multipart image| B[Spring Boot API]
     B -->|internal HTTP request| C[Python Image Service]
-    C --> D[OpenCV Enhancement]
-    D --> E[YOLO Detection]
+    C --> D[OpenCV / hình học]
+    D --> E[Phone segmentation + damage-mask inference]
     E --> C
     C -->|detections + timings| B
     B --> F[(Scan History)]
     B -->|JSON result| A
 ```
 
-- `image-processing/`: xử lý ảnh, enhancement, YOLO inference và đo thời gian.
+- `image-processing/`: xử lý ảnh, enhancement, phone segmentation, damage-mask inference và đo thời gian.
 - `backend/`: API Spring Boot, validation, điều phối inference và lưu lịch sử.
-- `app/`: Flutter UI, upload/camera, hiển thị bounding box và lịch sử quét.
+- `app/`: Flutter UI, upload/camera, hiển thị source/overlay-mask và lịch sử quét.
 - `contracts/`: hợp đồng dữ liệu dùng chung giữa ba thành phần.
 - `docs/`: thiết kế hệ thống và tài liệu thực nghiệm.
 
@@ -36,8 +36,14 @@ Phase 5 đã cài đặt Data Augmentation cho thiết bị điện tử, đồn
 
 Phase 6 đã cài đặt Before & After Comparison Suite với bộ chỉ số định lượng (CNR, Tenengrad, Laplacian Var, Entropy, Noise Amplification) và bảng so sánh trực quan. Xem [tài liệu Phase 6](docs/phase-06-before-after-comparison.md).
 
-Phase 7 đã thiết lập YOLO baseline pipeline: adapter Ultralytics cho trọng số TV2, mock detector chạy được không cần model, postprocess bounding box, ảnh annotated và timing theo contract. Xem [tài liệu Phase 7](docs/phase-07-yolo-baseline.md).
+Phase 7 đã thiết lập YOLO baseline pipeline: adapter Ultralytics, mock detector, postprocess bounding box, ảnh annotated và timing theo contract. Đây là baseline/CLI độc lập, không phải luồng runtime hiện tại. Xem [tài liệu Phase 7](docs/phase-07-yolo-baseline.md).
 
-Việc còn lại sau Phase 7 là nhận dataset/trọng số TV2 để benchmark accuracy, calibration và tích hợp inference thật vào backend/API.
+Luồng runtime hiện tại dùng worker phone damage v3: RF-DETR segmentation xác định vùng điện thoại, sau đó mô hình damage tạo mask ứng viên trên ảnh gốc; backend lưu kết quả và Flutter hiển thị overlay. Chi tiết tại [phone damage v3](docs/PHONE_DAMAGE_V3.md). Worker hiện trả `detections=[]`; vì vậy UI runtime chưa hiển thị bounding box/class/confidence kiểu YOLO.
+
+Kiến trúc runtime chính thức là **damage-mask segmentation**. Việc còn lại là đánh giá trên test set độc lập bằng metric segmentation phù hợp (IoU, Dice, pixel/image-level precision-recall), calibration ngưỡng và benchmark thời gian trên máy đích. YOLO chỉ được giữ lại như baseline/CLI nghiên cứu, không phải một phần của demo runtime.
+
+Xem [quyết định kiến trúc segmentation](docs/SEGMENTATION_RUNTIME.md) để biết chính xác dữ liệu mà app được phép hiển thị, metric cần đánh giá và giới hạn hiện tại.
+
+Hướng dẫn cài đặt, chạy test và demo từ clone mới: [SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md).
 
 

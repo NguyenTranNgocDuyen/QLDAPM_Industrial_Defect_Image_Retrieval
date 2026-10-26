@@ -8,7 +8,7 @@ Phạm vi module:
 
 - Xử lý ảnh bằng OpenCV.
 - Perspective/illumination/color correction có thể bật tắt.
-- Tích hợp model YOLO do TV2 bàn giao.
+- Tích hợp runtime damage-mask segmentation: phân vùng điện thoại, suy luận mask ứng viên hư hại và trả overlay/severity có giới hạn rõ ràng.
 - Postprocess detection và đo thời gian từng bước.
 - Cung cấp internal endpoint `POST /v1/infer` cho Spring Boot.
 
@@ -46,10 +46,12 @@ Output:
 - `04_before_after.png`: ảnh so sánh phục vụ báo cáo/demo.
 - `metrics.json`: kích thước, thời gian, homography và điểm đã sắp xếp.
 
-Chạy test:
+Chạy test (cài dependency phát triển một lần; `requirements.txt` chỉ chứa runtime tối thiểu):
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m pip install -r requirements-dev.txt
+New-Item -ItemType Directory -Force outputs | Out-Null
+python -m pytest tests -p no:cacheprovider --basetemp outputs/pytest-local -q
 ```
 
 Chi tiết thuật toán và cách đánh giá nằm trong `docs/phase-02-perspective-correction.md`.
@@ -85,7 +87,7 @@ Output gồm từng ảnh đã xử lý, `comparison.png` và `metrics.json` ch�
 
 Chi tiết lựa chọn thuật toán, failure cases và cách đánh giá với YOLO nằm trong `docs/phase-03-illumination-correction.md`.
 
-## Phase 7 - YOLO Baseline
+## Phase 7 - YOLO Baseline (không thuộc runtime)
 
 Chạy pipeline mô phỏng không cần tải model:
 
@@ -209,7 +211,7 @@ Khi gọi Python, dùng `extract_corners_from_mask(..., adaptive_refinement=Fals
 
 ### Chạy pipeline
 
-Chạy toàn bộ chuỗi tiền xử lý (Perspective với Segmentation, Illumination, Color Space, Before/After evaluation, YOLO) chỉ với một lệnh:
+Chạy toàn bộ chuỗi tiền xử lý (Perspective với Segmentation, Illumination, Color Space, Before/After evaluation và YOLO baseline tùy chọn) chỉ với một lệnh:
 
 ```powershell
 python -m defect_vision.pipeline_cli `

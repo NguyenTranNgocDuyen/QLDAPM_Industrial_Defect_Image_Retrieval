@@ -20,6 +20,7 @@ image-processing/models/*
 image-processing/.env
 
 # Java and Flutter build output
+/target/
 backend/target/
 app/.dart_tool/
 app/build/

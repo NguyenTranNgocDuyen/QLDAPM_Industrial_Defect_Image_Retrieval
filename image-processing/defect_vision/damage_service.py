@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import math
 import os
@@ -13,10 +12,10 @@ import uuid
 
 import cv2
 import numpy as np
-from PIL import Image, ImageOps
 
 from .damage_severity import binary_mask, evaluate_geometry, evaluate_observed_area, load_config, unavailable
 from .corner_expansion import load_expansion_config
+from .image_io import decode_upright_rgb, write_image
 from .perspective import correct_perspective, PerspectiveCorrectionError
 from .phone_segmenter import PhoneSegmenter, extract_corners_from_mask
 from .pipeline import PipelineConfig, run_preprocessing_pipeline
@@ -28,8 +27,7 @@ DEFAULT_WEIGHTS = ROOT / 'phone_damage_v3_kit' / 'phone_damage_v3' / 'weights'
 
 
 def decode_upright(data):
-    with Image.open(io.BytesIO(data)) as image:
-        return np.array(ImageOps.exif_transpose(image).convert('RGB'), dtype=np.uint8)
+    return decode_upright_rgb(data)
 
 
 def rectify_masks(damage, surface, transform, size):
@@ -111,7 +109,7 @@ class DamageWorker:
         assets = {}
 
         def save(name, image):
-            if not cv2.imwrite(str(folder / f'{name}.png'), image):
+            if not write_image(folder / f'{name}.png', image):
                 raise OSError('Could not write PNG artifact.')
             assets[name] = f'/api/damage-assets/{scan_id}/{name}.png'
 

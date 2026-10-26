@@ -1,0 +1,1 @@
+import 'package:flutter/material.dart'; class KeyboardHistoryScreen extends StatelessWidget { const KeyboardHistoryScreen({super.key}); @override Widget build(BuildContext c)=>const Scaffold(body:Center(child:Text('Lịch sử kiểm tra bàn phím'))); }

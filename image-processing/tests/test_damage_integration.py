@@ -12,6 +12,7 @@ from PIL import Image
 
 from defect_vision.damage_service import DamageWorker, decode_upright, rectify_masks
 from defect_vision.damage_api import DamageHTTPServer, make_handler
+from defect_vision.image_io import read_image
 from defect_vision.perspective import correct_perspective
 from phone_damage_v3_kit.phone_damage_v3 import PhoneNotFound
 
@@ -90,7 +91,7 @@ def test_worker_reuses_models_one_detector_call_per_image_and_preserves_small_ca
         assert r['severity']['estimated_severity'] is not None
         assert r['severity']['skeleton_length_ratio'] > 0.5
         path = tmp_path / r['scanId'] / 'damage_original.png'
-        assert np.count_nonzero(cv2.imread(str(path), 0)) == 140
+        assert np.count_nonzero(read_image(path, cv2.IMREAD_GRAYSCALE)) == 140
         assert r['displayImage']['width'] == r['displayImage']['height']
         json.dumps(r, allow_nan=False)
     np.testing.assert_array_equal(w.engine.seen[0][0,0], [230,0,0])
@@ -178,8 +179,8 @@ def test_image_estimate_needs_no_handset_or_dimensions_and_retains_limitations(t
     assert severity['heuristic_unvalidated'] is True
     assert set(severity['limitations']) == {'aspect_approximated_from_image', 'visibility_not_verified'}
     assert severity['geometry_diagnostics']['usable'] is True
-    mask = cv2.imread(str(tmp_path / result['scanId'] / 'damage_rectified.png'), 0) != 0
-    surface = cv2.imread(str(tmp_path / result['scanId'] / 'surface_rectified.png'), 0) != 0
+    mask = read_image(tmp_path / result['scanId'] / 'damage_rectified.png', cv2.IMREAD_GRAYSCALE) != 0
+    surface = read_image(tmp_path / result['scanId'] / 'surface_rectified.png', cv2.IMREAD_GRAYSCALE) != 0
     assert sum(item['candidate_pixels_rectified'] for item in severity['locations']) == int((mask & surface).sum())
     assert sum(item['candidate_share'] for item in severity['locations']) == pytest.approx(1)
     assert w.engine.seen[0].shape == (200, 200, 3)
@@ -210,8 +211,8 @@ def test_geometry_problems_keep_warnings_but_allow_observed_estimate(tmp_path, c
         assert result['displayImage']['coordinateSpace'] == 'source'
         assert result['transformMatrix'] is None
         assert 'damage_rectified' not in result['assets']
-        source = cv2.imread(str(tmp_path / result['scanId'] / 'source.png'))
-        display = cv2.imread(str(tmp_path / result['scanId'] / 'display.png'))
+        source = read_image(tmp_path / result['scanId'] / 'source.png')
+        display = read_image(tmp_path / result['scanId'] / 'display.png')
         np.testing.assert_array_equal(source, display)
         assert sum(v['candidate_pixels_source'] for v in severity['locations']) == 140
         assert 'below_alarm_threshold' in severity['reasons']

@@ -38,6 +38,12 @@ python:
     connect-timeout-ms: 5000
     read-timeout-ms: ${PYTHON_IMAGE_READ_TIMEOUT_MS:300000}
 
+keyboard:
+  service:
+    url: ${KEYBOARD_SERVICE_URL:http://127.0.0.1:8001}
+    connect-timeout-ms: 5000
+    read-timeout-ms: 300000
+
 logging:
   level:
     com.industrial.defect: DEBUG

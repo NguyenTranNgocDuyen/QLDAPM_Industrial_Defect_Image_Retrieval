@@ -31,6 +31,7 @@ from .illumination import (
     IlluminationResult,
     correct_illumination,
 )
+from .image_io import write_image
 from .perspective import (
     PerspectiveResult,
     correct_perspective,
@@ -242,35 +243,35 @@ def save_pipeline_artifacts(result: PipelineResult, output_dir: Path) -> dict[st
 
     # 1. Original input
     p_orig = output_dir / "01_original.png"
-    cv2.imwrite(str(p_orig), result.original_image)
+    write_image(p_orig, result.original_image)
     saved_files["original"] = p_orig
 
     # 2. Perspective (if available)
     if result.perspective_result is not None:
         p_persp = output_dir / "02_perspective.png"
-        cv2.imwrite(str(p_persp), result.perspective_result.image)
+        write_image(p_persp, result.perspective_result.image)
         saved_files["perspective"] = p_persp
 
         corner_preview = draw_corners(result.original_image, result.perspective_result.ordered_corners)
         p_corners = output_dir / "02_selected_corners.png"
-        cv2.imwrite(str(p_corners), corner_preview)
+        write_image(p_corners, corner_preview)
         saved_files["selected_corners"] = p_corners
 
         board = make_before_after(corner_preview, result.perspective_result.image)
         p_persp_board = output_dir / "02_perspective_board.png"
-        cv2.imwrite(str(p_persp_board), board)
+        write_image(p_persp_board, board)
         saved_files["perspective_board"] = p_persp_board
 
     # 3. Illumination
     if result.illumination_result is not None:
         p_illum = output_dir / "03_illumination.png"
-        cv2.imwrite(str(p_illum), result.illumination_result.image)
+        write_image(p_illum, result.illumination_result.image)
         saved_files["illumination"] = p_illum
 
     # 4. Color space comparison grid
     grid = make_channel_comparison_grid(result.original_image, result.colorspace_channels)
     p_cs_grid = output_dir / "04_colorspace_grid.png"
-    cv2.imwrite(str(p_cs_grid), grid)
+    write_image(p_cs_grid, grid)
     saved_files["colorspace_grid"] = p_cs_grid
 
     # 5. Quality Comparison Board
@@ -280,18 +281,18 @@ def save_pipeline_artifacts(result: PipelineResult, output_dir: Path) -> dict[st
         record=result.comparison_record,
     )
     p_comp_board = output_dir / "05_before_after_board.png"
-    cv2.imwrite(str(p_comp_board), comp_board)
+    write_image(p_comp_board, comp_board)
     saved_files["comparison_board"] = p_comp_board
 
     # 6. Final preprocessed image (ready for downstream tasks)
     p_final = output_dir / "final_preprocessed.png"
-    cv2.imwrite(str(p_final), result.preprocessed_image)
+    write_image(p_final, result.preprocessed_image)
     saved_files["final_preprocessed"] = p_final
 
     # 7. YOLO Annotated (if executed)
     if result.yolo_annotated_image is not None:
         p_yolo = output_dir / "06_yolo_annotated.png"
-        cv2.imwrite(str(p_yolo), result.yolo_annotated_image)
+        write_image(p_yolo, result.yolo_annotated_image)
         saved_files["yolo_annotated"] = p_yolo
 
     # 8. Summary Report JSON

@@ -1,0 +1,63 @@
+{
+  "scanId": "65b1c237-65fc-4b7f-b83c-befe5231871a",
+  "success": true,
+  "hasDefect": null,
+  "status": "insufficient_evidence",
+  "sourceImage": {
+    "width": 200,
+    "height": 200,
+    "url": "/api/damage-assets/65b1c237-65fc-4b7f-b83c-befe5231871a/source.png",
+    "coordinateSpace": "source"
+  },
+  "displayImage": {
+    "width": 200,
+    "height": 200,
+    "url": "/api/damage-assets/65b1c237-65fc-4b7f-b83c-befe5231871a/display.png",
+    "coordinateSpace": "source"
+  },
+  "processing": {
+    "preprocessingMs": 0.004500001523410901,
+    "inferenceMs": 0.0,
+    "postprocessingMs": 0.0,
+    "totalMs": 2.693499998713378
+  },
+  "detections": [],
+  "damage": {
+    "status": "phone_not_found",
+    "candidate_pixels_original": null,
+    "found": null,
+    "threshold": 0.4,
+    "alarm_pixels": 200,
+    "detector_loaded_in_damage_engine": false,
+    "inference_variant": "native",
+    "observed_surface": "unknown"
+  },
+  "severity": {
+    "status": "insufficient_evidence",
+    "estimated_severity": null,
+    "needs_review": true,
+    "reasons": [
+      "phone_not_found"
+    ],
+    "area_ratio": null,
+    "skeleton_length_ratio": null,
+    "width_ratio": null,
+    "skeleton_length_max_px": null,
+    "skeleton_length_total_px": null,
+    "width_p90_max_px": null,
+    "component_count": null,
+    "heuristic_unvalidated": true,
+    "config_version": "geometry-v6-area-2-5-width-5-8-unvalidated",
+    "measurement_coordinate_space": null,
+    "scope": "observed_surface_only",
+    "estimation_basis": null,
+    "limitations": [],
+    "locations": null,
+    "classification_rule": "area_led_width_confirmation"
+  },
+  "assets": {
+    "source": "/api/damage-assets/65b1c237-65fc-4b7f-b83c-befe5231871a/source.png",
+    "display": "/api/damage-assets/65b1c237-65fc-4b7f-b83c-befe5231871a/display.png"
+  },
+  "transformMatrix": null
+}

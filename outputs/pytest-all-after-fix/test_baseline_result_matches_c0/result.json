@@ -1,0 +1,31 @@
+{
+  "scanId": "00000000-0000-0000-0000-000000000001",
+  "success": true,
+  "hasDefect": true,
+  "sourceImage": {
+    "width": 100,
+    "height": 80
+  },
+  "displayImage": {
+    "width": 100,
+    "height": 80,
+    "url": "annotated.png",
+    "coordinateSpace": "processed"
+  },
+  "processing": {
+    "preprocessingMs": 0.008,
+    "inferenceMs": 0.096,
+    "postprocessingMs": 0.08,
+    "totalMs": 0.185
+  },
+  "detections": [
+    {
+      "class": "defect",
+      "confidence": 0.778,
+      "x1": 50.0,
+      "y1": 20.0,
+      "x2": 75.0,
+      "y2": 40.0
+    }
+  ]
+}

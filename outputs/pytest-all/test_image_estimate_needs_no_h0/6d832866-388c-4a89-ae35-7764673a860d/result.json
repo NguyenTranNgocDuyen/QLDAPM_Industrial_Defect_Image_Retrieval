@@ -1,0 +1,144 @@
+{
+  "scanId": "6d832866-388c-4a89-ae35-7764673a860d",
+  "success": true,
+  "hasDefect": true,
+  "status": "estimated",
+  "sourceImage": {
+    "width": 200,
+    "height": 200,
+    "url": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/source.png",
+    "coordinateSpace": "source"
+  },
+  "displayImage": {
+    "width": 160,
+    "height": 160,
+    "url": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/overlay.png",
+    "coordinateSpace": "processed"
+  },
+  "processing": {
+    "preprocessingMs": 0.03099999958067201,
+    "inferenceMs": 0.12660000356845558,
+    "postprocessingMs": 15.401499997096835,
+    "totalMs": 22.06329999899026
+  },
+  "detections": [],
+  "damage": {
+    "status": "candidates",
+    "candidate_pixels_original": 280,
+    "found": true,
+    "threshold": 0.4,
+    "alarm_pixels": 200,
+    "detector_loaded_in_damage_engine": false,
+    "inference_variant": "native",
+    "observed_surface": "unknown",
+    "phone_confidence": 0.9,
+    "phone_instances": 1,
+    "target_selection": "highest_confidence_single_instance"
+  },
+  "severity": {
+    "status": "estimated",
+    "estimated_severity": "minor",
+    "needs_review": true,
+    "reasons": [
+      "area_within_minor_limit"
+    ],
+    "area_ratio": 0.0109375,
+    "skeleton_length_ratio": 0.6054601813909813,
+    "width_ratio": 0.0125,
+    "skeleton_length_max_px": 137.0,
+    "skeleton_length_total_px": 137.0,
+    "width_p90_max_px": 2.0,
+    "component_count": 1,
+    "heuristic_unvalidated": true,
+    "config_version": "geometry-v6-area-2-5-width-5-8-unvalidated",
+    "measurement_coordinate_space": "rectified_surface",
+    "scope": "observed_surface_only",
+    "estimation_basis": "image_geometry",
+    "limitations": [
+      "aspect_approximated_from_image",
+      "visibility_not_verified"
+    ],
+    "locations": [
+      {
+        "region": "top_center",
+        "candidate_pixels_rectified": 106,
+        "candidate_share": 0.37857142857142856
+      },
+      {
+        "region": "top_right",
+        "candidate_pixels_rectified": 88,
+        "candidate_share": 0.3142857142857143
+      },
+      {
+        "region": "top_left",
+        "candidate_pixels_rectified": 86,
+        "candidate_share": 0.30714285714285716
+      }
+    ],
+    "classification_rule": "area_led_width_confirmation",
+    "metric_levels": {
+      "area_ratio": "minor",
+      "skeleton_length_ratio": "severe",
+      "width_ratio": "minor"
+    },
+    "geometry_diagnostics": {
+      "usable": true,
+      "measurements": {
+        "body_inside_quad_ratio": 1.0,
+        "quad_fill_ratio": 1.0,
+        "convex_fill_ratio": 1.0,
+        "opposite_edge_ratio": 1.0,
+        "short_side_px": 160
+      },
+      "reasons": [],
+      "corner_expansion": {
+        "config_version": "corner-expansion-v2-unvalidated",
+        "heuristic_unvalidated": true,
+        "applied": false,
+        "reason": "already_covered",
+        "before": {
+          "mask_coverage": 1.0,
+          "background_ratio": 0.0
+        },
+        "after": {
+          "mask_coverage": 1.0,
+          "background_ratio": 0.0
+        },
+        "edge_offsets_px": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  "assets": {
+    "source": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/source.png",
+    "body_original": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/body_original.png",
+    "damage_original": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/damage_original.png",
+    "corners": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/corners.png",
+    "damage_rectified": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/damage_rectified.png",
+    "surface_rectified": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/surface_rectified.png",
+    "preprocessed": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/preprocessed.png",
+    "overlay": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/overlay.png",
+    "display": "/api/damage-assets/6d832866-388c-4a89-ae35-7764673a860d/display.png"
+  },
+  "transformMatrix": [
+    [
+      1.0000000000000002,
+      1.0127268371380654e-17,
+      -20.000000000000004
+    ],
+    [
+      0.0,
+      1.0,
+      -20.0
+    ],
+    [
+      5.6211600471508265e-19,
+      -7.026450058938533e-20,
+      1.0
+    ]
+  ]
+}

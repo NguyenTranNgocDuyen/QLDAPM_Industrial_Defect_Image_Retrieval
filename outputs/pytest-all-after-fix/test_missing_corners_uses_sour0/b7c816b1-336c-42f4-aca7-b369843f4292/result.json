@@ -1,0 +1,102 @@
+{
+  "scanId": "b7c816b1-336c-42f4-aca7-b369843f4292",
+  "success": true,
+  "hasDefect": false,
+  "status": "needs_review",
+  "sourceImage": {
+    "width": 200,
+    "height": 200,
+    "url": "/api/damage-assets/b7c816b1-336c-42f4-aca7-b369843f4292/source.png",
+    "coordinateSpace": "source"
+  },
+  "displayImage": {
+    "width": 200,
+    "height": 200,
+    "url": "/api/damage-assets/b7c816b1-336c-42f4-aca7-b369843f4292/overlay.png",
+    "coordinateSpace": "source"
+  },
+  "processing": {
+    "preprocessingMs": 0.06410000059986487,
+    "inferenceMs": 0.34529999902588315,
+    "postprocessingMs": 1.9241000009060372,
+    "totalMs": 11.122199997771531
+  },
+  "detections": [],
+  "damage": {
+    "status": "below_alarm_threshold",
+    "candidate_pixels_original": 140,
+    "found": false,
+    "threshold": 0.4,
+    "alarm_pixels": 200,
+    "detector_loaded_in_damage_engine": false,
+    "inference_variant": "native",
+    "observed_surface": "front",
+    "phone_confidence": 0.9,
+    "phone_instances": 1,
+    "target_selection": "highest_confidence_single_instance"
+  },
+  "severity": {
+    "status": "needs_review",
+    "estimated_severity": "minor",
+    "needs_review": true,
+    "reasons": [
+      "missing_surface_corners",
+      "area_within_minor_limit",
+      "partial_area_estimate_only",
+      "below_alarm_threshold"
+    ],
+    "area_ratio": 0.00546875,
+    "skeleton_length_ratio": null,
+    "width_ratio": null,
+    "skeleton_length_max_px": null,
+    "skeleton_length_total_px": null,
+    "width_p90_max_px": null,
+    "component_count": null,
+    "heuristic_unvalidated": true,
+    "config_version": "geometry-v6-area-2-5-width-5-8-unvalidated",
+    "measurement_coordinate_space": "source",
+    "scope": "observed_surface_only",
+    "estimation_basis": "observed_area_only",
+    "limitations": [
+      "observed_area_only",
+      "unseen_surface_not_assessed",
+      "perspective_not_corrected",
+      "length_and_width_unavailable"
+    ],
+    "locations": [
+      {
+        "region": "top_center",
+        "candidate_pixels_source": 67,
+        "candidate_share": 0.4785714285714286
+      },
+      {
+        "region": "top_right",
+        "candidate_pixels_source": 37,
+        "candidate_share": 0.2642857142857143
+      },
+      {
+        "region": "top_left",
+        "candidate_pixels_source": 36,
+        "candidate_share": 0.2571428571428571
+      }
+    ],
+    "classification_rule": "area_led_width_confirmation",
+    "severity_is_partial": true,
+    "unassessed_metrics": [
+      "skeleton_length_ratio",
+      "width_ratio"
+    ],
+    "locations_coordinate_space": "source",
+    "metric_levels": {
+      "area_ratio": "minor"
+    }
+  },
+  "assets": {
+    "source": "/api/damage-assets/b7c816b1-336c-42f4-aca7-b369843f4292/source.png",
+    "body_original": "/api/damage-assets/b7c816b1-336c-42f4-aca7-b369843f4292/body_original.png",
+    "damage_original": "/api/damage-assets/b7c816b1-336c-42f4-aca7-b369843f4292/damage_original.png",
+    "overlay": "/api/damage-assets/b7c816b1-336c-42f4-aca7-b369843f4292/overlay.png",
+    "display": "/api/damage-assets/b7c816b1-336c-42f4-aca7-b369843f4292/display.png"
+  },
+  "transformMatrix": null
+}

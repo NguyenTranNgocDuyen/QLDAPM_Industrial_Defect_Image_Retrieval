@@ -1,0 +1,103 @@
+{
+  "scanId": "8c1b8637-3928-4aa1-8ad6-6b7e4996790b",
+  "success": true,
+  "hasDefect": false,
+  "status": "needs_review",
+  "sourceImage": {
+    "width": 200,
+    "height": 200,
+    "url": "/api/damage-assets/8c1b8637-3928-4aa1-8ad6-6b7e4996790b/source.png",
+    "coordinateSpace": "source"
+  },
+  "displayImage": {
+    "width": 200,
+    "height": 200,
+    "url": "/api/damage-assets/8c1b8637-3928-4aa1-8ad6-6b7e4996790b/overlay.png",
+    "coordinateSpace": "source"
+  },
+  "processing": {
+    "preprocessingMs": 0.04740000076708384,
+    "inferenceMs": 0.13450000187731348,
+    "postprocessingMs": 17.16659999874537,
+    "totalMs": 24.185900001612026
+  },
+  "detections": [],
+  "damage": {
+    "status": "below_alarm_threshold",
+    "candidate_pixels_original": 140,
+    "found": false,
+    "threshold": 0.4,
+    "alarm_pixels": 200,
+    "detector_loaded_in_damage_engine": false,
+    "inference_variant": "native",
+    "observed_surface": "edgeTop",
+    "phone_confidence": 0.9,
+    "phone_instances": 1,
+    "target_selection": "highest_confidence_single_instance"
+  },
+  "severity": {
+    "status": "needs_review",
+    "estimated_severity": null,
+    "needs_review": true,
+    "reasons": [
+      "surface_not_a_confirmed_planar_face",
+      "below_alarm_threshold"
+    ],
+    "area_ratio": null,
+    "skeleton_length_ratio": null,
+    "width_ratio": null,
+    "skeleton_length_max_px": null,
+    "skeleton_length_total_px": null,
+    "width_p90_max_px": null,
+    "component_count": null,
+    "heuristic_unvalidated": true,
+    "config_version": "geometry-v6-area-2-5-width-5-8-unvalidated",
+    "measurement_coordinate_space": null,
+    "scope": "observed_surface_only",
+    "estimation_basis": null,
+    "limitations": [],
+    "locations": null,
+    "classification_rule": "area_led_width_confirmation",
+    "geometry_diagnostics": {
+      "usable": true,
+      "measurements": {
+        "body_inside_quad_ratio": 1.0,
+        "quad_fill_ratio": 1.0,
+        "convex_fill_ratio": 1.0,
+        "opposite_edge_ratio": 1.0,
+        "short_side_px": 160
+      },
+      "reasons": [],
+      "corner_expansion": {
+        "config_version": "corner-expansion-v2-unvalidated",
+        "heuristic_unvalidated": true,
+        "applied": false,
+        "reason": "already_covered",
+        "before": {
+          "mask_coverage": 1.0,
+          "background_ratio": 0.0
+        },
+        "after": {
+          "mask_coverage": 1.0,
+          "background_ratio": 0.0
+        },
+        "edge_offsets_px": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  "assets": {
+    "source": "/api/damage-assets/8c1b8637-3928-4aa1-8ad6-6b7e4996790b/source.png",
+    "body_original": "/api/damage-assets/8c1b8637-3928-4aa1-8ad6-6b7e4996790b/body_original.png",
+    "damage_original": "/api/damage-assets/8c1b8637-3928-4aa1-8ad6-6b7e4996790b/damage_original.png",
+    "corners": "/api/damage-assets/8c1b8637-3928-4aa1-8ad6-6b7e4996790b/corners.png",
+    "preprocessed": "/api/damage-assets/8c1b8637-3928-4aa1-8ad6-6b7e4996790b/preprocessed.png",
+    "overlay": "/api/damage-assets/8c1b8637-3928-4aa1-8ad6-6b7e4996790b/overlay.png",
+    "display": "/api/damage-assets/8c1b8637-3928-4aa1-8ad6-6b7e4996790b/display.png"
+  },
+  "transformMatrix": null
+}

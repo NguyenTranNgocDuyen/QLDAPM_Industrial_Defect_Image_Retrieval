@@ -1,0 +1,64 @@
+{
+  "scanId": "d2b7d77e-e399-4e1d-9c65-ce3e23792c63",
+  "success": false,
+  "hasDefect": null,
+  "status": "insufficient_evidence",
+  "sourceImage": {
+    "width": 200,
+    "height": 200,
+    "url": "/api/damage-assets/d2b7d77e-e399-4e1d-9c65-ce3e23792c63/source.png",
+    "coordinateSpace": "source"
+  },
+  "displayImage": {
+    "width": 200,
+    "height": 200,
+    "url": "/api/damage-assets/d2b7d77e-e399-4e1d-9c65-ce3e23792c63/display.png",
+    "coordinateSpace": "source"
+  },
+  "processing": {
+    "preprocessingMs": 0.04400000034365803,
+    "inferenceMs": 0.0,
+    "postprocessingMs": 0.0,
+    "totalMs": 4.431100001966115
+  },
+  "detections": [],
+  "damage": {
+    "status": "processing_error",
+    "candidate_pixels_original": null,
+    "found": null,
+    "threshold": 0.4,
+    "alarm_pixels": 200,
+    "detector_loaded_in_damage_engine": false,
+    "inference_variant": "native",
+    "observed_surface": "unknown",
+    "error": "ValueError: Mask must be a nonempty HxW array in the same coordinates."
+  },
+  "severity": {
+    "status": "insufficient_evidence",
+    "estimated_severity": null,
+    "needs_review": true,
+    "reasons": [
+      "processing_error"
+    ],
+    "area_ratio": null,
+    "skeleton_length_ratio": null,
+    "width_ratio": null,
+    "skeleton_length_max_px": null,
+    "skeleton_length_total_px": null,
+    "width_p90_max_px": null,
+    "component_count": null,
+    "heuristic_unvalidated": true,
+    "config_version": "geometry-v6-area-2-5-width-5-8-unvalidated",
+    "measurement_coordinate_space": null,
+    "scope": "observed_surface_only",
+    "estimation_basis": null,
+    "limitations": [],
+    "locations": null,
+    "classification_rule": "area_led_width_confirmation"
+  },
+  "assets": {
+    "source": "/api/damage-assets/d2b7d77e-e399-4e1d-9c65-ce3e23792c63/source.png",
+    "display": "/api/damage-assets/d2b7d77e-e399-4e1d-9c65-ce3e23792c63/display.png"
+  },
+  "transformMatrix": null
+}

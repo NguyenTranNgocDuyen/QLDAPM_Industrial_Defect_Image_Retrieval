@@ -4,10 +4,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 import cv2, numpy as np
-from defect_vision.image_io import decode_upright_rgb
+from io import BytesIO
+from PIL import Image, ImageOps
 from .config import CONFIG
-from .pipeline import ContourKeyboardLocalizer, ContourKeyDetector, cluster_rows, geometry_defects, quality
-ROOT=Path(__file__).resolve().parent / 'assets'
+from .pipeline import ContourKeyboardLocalizer, ContourKeyDetector, cluster_rows, draw_grid_debug, geometry_defects, quality
+ROOT=Path(os.environ.get('KEYBOARD_OUTPUT_DIR', Path(__file__).resolve().parents[1] / 'outputs' / 'keyboard-inspections'))
+def model_state():
+    weights=os.environ.get('KEYBOARD_DEFECT_WEIGHTS')
+    return {'keyDetector': 'opencv_contour_baseline', 'keyboardDefectDetector': 'not_configured' if not weights else ('weights_present_not_loaded' if Path(weights).is_file() else 'weights_missing'), 'specificDefectLabels': 'geometry_heuristic_only'}
 class Server(ThreadingHTTPServer):
     allow_reuse_address=os.name!='nt'
     def server_bind(self):
@@ -16,9 +20,20 @@ class Server(ThreadingHTTPServer):
 def result(inspection_id, image, status='insufficient_evidence', reasons=None, keyboard=None, defects=None, assets=None, elapsed=0):
     h,w=image.shape[:2]; reasons=reasons or []; keyboard=keyboard or {'detected':False,'confidence':0.0,'layoutType':'unknown','rowsDetected':0,'keysExpected':None,'keysDetected':0,'referenceMode':'none','quality':quality(image)}
     defects=defects or []
-    return {'inspectionId':inspection_id,'success':status!='processing_error','status':status,'hasDefect':bool(defects),'sourceImage':{'url':f'/api/keyboard-assets/{inspection_id}/source.png','width':w,'height':h,'coordinateSpace':'source'},'displayImage':{'url':f'/api/keyboard-assets/{inspection_id}/annotated.png','width':w,'height':h,'coordinateSpace':'processed'},'keyboard':keyboard,'defects':defects,'summary':{'defectCount':len(defects),'needsReview':status!='completed','reasons':reasons},'processing':{'preprocessingMs':0,'inferenceMs':0,'postprocessingMs':0,'totalMs':round(elapsed,2)},'assets':assets or {'annotatedImage':f'/api/keyboard-assets/{inspection_id}/annotated.png','rectifiedKeyboardImage':None,'keyGridDebugImage':None}}
+    return {'inspectionId':inspection_id,'success':status!='processing_error','status':status,'hasDefect':bool(defects) if status=='completed' else False,'sourceImage':{'url':f'/api/keyboard-assets/{inspection_id}/source.png','width':w,'height':h,'coordinateSpace':'source'},'displayImage':{'url':f'/api/keyboard-assets/{inspection_id}/annotated.png','width':w,'height':h,'coordinateSpace':'processed'},'keyboard':keyboard,'defects':defects,'summary':{'defectCount':len(defects),'needsReview':status!='completed','reasons':reasons},'processing':{'preprocessingMs':0,'inferenceMs':0,'postprocessingMs':0,'totalMs':round(elapsed,2)},'assets':assets or {'annotatedImage':f'/api/keyboard-assets/{inspection_id}/annotated.png','rectifiedKeyboardImage':None,'keyGridDebugImage':None}}
+def decode_keyboard_image(body):
+    """Decode locally so this worker never imports phone-damage code."""
+    try:
+        with Image.open(BytesIO(body)) as opened:
+            if opened.format not in {'JPEG', 'PNG', 'WEBP'}:
+                raise ValueError('unsupported image format')
+            rgb = np.asarray(ImageOps.exif_transpose(opened).convert('RGB'))
+    except (OSError, ValueError) as exc:
+        raise ValueError('Tệp tải lên không phải ảnh JPEG, PNG hoặc WebP hợp lệ.') from exc
+    return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
 def analyze(body):
-    started=time.perf_counter(); image=cv2.cvtColor(decode_upright_rgb(body),cv2.COLOR_RGB2BGR)
+    started=time.perf_counter(); image=decode_keyboard_image(body)
     iid=str(uuid.uuid4()); folder=ROOT/iid; folder.mkdir(parents=True,exist_ok=False); cv2.imwrite(str(folder/'source.png'),image)
     q=quality(image)
     if q['status']!='acceptable':
@@ -29,20 +44,20 @@ def analyze(body):
     keys=ContourKeyDetector().detect(roi); rows=cluster_rows(keys)
     if len(keys)<8 or len(rows)<2:
         cv2.imwrite(str(folder/'annotated.png'),image); return result(iid,image,reasons=['Không phát hiện đủ lưới phím đáng tin cậy.'],keyboard={'detected':True,'confidence':confidence,'layoutType':'unknown','rowsDetected':len(rows),'keysExpected':None,'keysDetected':len(keys),'referenceMode':'none','quality':q},elapsed=(time.perf_counter()-started)*1000)
-    defects=geometry_defects(rows); annotated=image.copy()
+    defects=geometry_defects(rows, origin); annotated=image.copy()
     for d in defects:
-        b=d['bbox']; b['x1']+=origin[0]; b['x2']+=origin[0]; b['y1']+=origin[1]; b['y2']+=origin[1]
+        b=d['bbox']
         cv2.rectangle(annotated,(b['x1'],b['y1']),(b['x2'],b['y2']),(0,0,255),2)
-    cv2.imwrite(str(folder/'annotated.png'),annotated); cv2.imwrite(str(folder/'rectified.png'),roi)
+    cv2.imwrite(str(folder/'annotated.png'),annotated); cv2.imwrite(str(folder/'rectified.png'),roi); cv2.imwrite(str(folder/'key_grid_debug.png'),draw_grid_debug(roi,rows))
     keyboard={'detected':True,'confidence':round(confidence,2),'layoutType':'custom','rowsDetected':len(rows),'keysExpected':None,'keysDetected':len(keys),'referenceMode':'none','quality':q}
-    return result(iid,image,'completed',keyboard=keyboard,defects=defects,assets={'annotatedImage':f'/api/keyboard-assets/{iid}/annotated.png','rectifiedKeyboardImage':f'/api/keyboard-assets/{iid}/rectified.png','keyGridDebugImage':None},elapsed=(time.perf_counter()-started)*1000)
+    return result(iid,image,'completed',keyboard=keyboard,defects=defects,assets={'annotatedImage':f'/api/keyboard-assets/{iid}/annotated.png','rectifiedKeyboardImage':f'/api/keyboard-assets/{iid}/rectified.png','keyGridDebugImage':f'/api/keyboard-assets/{iid}/key_grid_debug.png'},elapsed=(time.perf_counter()-started)*1000)
 def handler():
  class H(BaseHTTPRequestHandler):
   def json(self,code,value):
    data=json.dumps(value,ensure_ascii=False,allow_nan=False).encode(); self.send_response(code); self.send_header('Content-Type','application/json; charset=utf-8'); self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
   def do_GET(self):
    path=urlparse(self.path).path
-   if path=='/health': return self.json(200,{'status':'ready','configVersion':CONFIG['version']})
+   if path=='/health': return self.json(200,{'status':'ready','configVersion':CONFIG['version'],'models':model_state()})
    match=re.fullmatch(r'/api/keyboard-assets/([0-9a-f-]{36})/([a-z_]+\.png)',path)
    if match and (file:=ROOT/match[1]/match[2]).is_file():
     data=file.read_bytes(); self.send_response(200); self.send_header('Content-Type','image/png'); self.send_header('Content-Length',str(len(data))); self.end_headers(); return self.wfile.write(data)

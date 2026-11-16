@@ -24,3 +24,7 @@ image-processing/.env
 backend/target/
 app/.dart_tool/
 app/build/
+
+# Derived keyboard datasets are reproducible from external source data.
+datasets/keyboard/derived/
+datasets/keyboard/external/

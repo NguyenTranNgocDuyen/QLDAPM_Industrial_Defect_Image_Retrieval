@@ -7,3 +7,12 @@ CONFIG = {
     "keys": {"min_area": 350, "max_area_fraction": 0.08, "row_tolerance_factor": 0.65,
              "shift_factor": 0.38, "tilt_degrees": 12.0, "missing_gap_factor": 1.85},
 }
+
+# Dataset roles are declarative only. Runtime remains the OpenCV baseline until a
+# separately trained model is explicitly configured; phone-damage data is never used.
+DATASET_ROLES = {
+    "key_detector": "datasets/keyboard/external/keyboard-key-detection/dataset_final",
+    "keyboard_defect": "datasets/keyboard/derived/bsx-keyboard-defect",
+    "keyboard_defect_label": "keyboard_defect",
+    "unsupported_specific_labels": ("missing_key", "shifted_key", "tilted_key"),
+}

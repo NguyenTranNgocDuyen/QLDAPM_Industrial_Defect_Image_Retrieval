@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Keyboard Annotation Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .canvas-container { user-select: none; }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1f2937; }
+    ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 h-screen flex flex-col overflow-hidden">
+
+  <!-- TOP NAVBAR -->
+  <header class="bg-gray-900 border-b border-gray-800 px-4 py-2.5 flex items-center justify-between shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="w-8 h-8 rounded bg-indigo-600 flex items-center justify-center font-bold text-white shadow">
+        <i class="fa-solid fa-keyboard"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-semibold text-white tracking-wide">Keyboard Annotation Studio</h1>
+        <p class="text-xs text-gray-400">Kiểm tra & Hiệu chỉnh nhãn Auto-label</p>
+      </div>
+    </div>
+
+    <!-- Center controls: dataset, split, filter -->
+    <div class="flex items-center space-x-2 text-xs">
+      <div class="flex items-center bg-gray-800 rounded px-2 py-1 border border-gray-700">
+        <span class="text-gray-400 mr-2">Tập:</span>
+        <select id="datasetSelect" class="bg-transparent text-gray-200 outline-none font-medium">
+          <option value="multi_class" class="bg-gray-800">v7 Đã Auto-label (key_ok vs key_damaged)</option>
+          <option value="keys_v6" class="bg-gray-800">keys_v6 Chuẩn</option>
+          <option value="stage1_merged" class="bg-gray-800">v7 Stage 1 Merged</option>
+        </select>
+      </div>
+
+      <div class="flex items-center bg-gray-800 rounded px-2 py-1 border border-gray-700">
+        <span class="text-gray-400 mr-2">Split:</span>
+        <select id="splitSelect" class="bg-transparent text-gray-200 outline-none font-medium">
+          <option value="train" class="bg-gray-800">Train</option>
+          <option value="val" class="bg-gray-800">Validation</option>
+          <option value="test" class="bg-gray-800">Test</option>
+        </select>
+      </div>
+
+      <div class="flex items-center bg-gray-800 rounded px-2 py-1 border border-gray-700">
+        <span class="text-gray-400 mr-2">Lọc:</span>
+        <select id="filterSelect" class="bg-transparent text-gray-200 outline-none font-medium">
+          <option value="all" class="bg-gray-800">Tất cả ảnh</option>
+          <option value="damaged_only" class="bg-gray-800">Chỉ ảnh có phím hỏng</option>
+          <option value="clean_only" class="bg-gray-800">Chỉ ảnh phím lành</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Right: Save button & Delete Image & Status -->
+    <div class="flex items-center space-x-2.5">
+      <span id="saveStatus" class="text-xs text-gray-400 flex items-center mr-1">
+        <i class="fa-solid fa-check text-green-500 mr-1.5"></i> Đã đồng bộ
+      </span>
+      <button id="saveBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs px-3 py-1.5 rounded transition shadow flex items-center">
+        <i class="fa-solid fa-floppy-disk mr-1.5"></i> Lưu (Ctrl+S)
+      </button>
+      <button id="deleteImageBtn" class="bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-700/60 font-medium text-xs px-3 py-1.5 rounded transition shadow flex items-center" title="Chuyển ảnh này vào thư mục deleted (Shift + Del)">
+        <i class="fa-solid fa-trash-can mr-1.5"></i> Xóa ảnh (Shift+Del)
+      </button>
+      <button id="autoDedupBtn" class="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 font-medium text-xs px-2.5 py-1.5 rounded transition flex items-center" title="Tự động dọn dẹp các ảnh trùng lặp trong tập hiện tại">
+        <i class="fa-solid fa-broom mr-1"></i> Lọc trùng
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT TOOLBAR -->
+    <aside class="w-16 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-3 space-y-4 shrink-0">
+      <div class="flex flex-col space-y-1">
+        <button id="toolSelect" title="Chọn & Chỉnh sửa (V)" class="tool-btn w-10 h-10 rounded flex items-center justify-center text-gray-300 hover:bg-gray-800 bg-gray-800 text-indigo-400">
+          <i class="fa-solid fa-arrow-pointer"></i>
+        </button>
+        <button id="toolDraw" title="Vẽ Bounding Box (R)" class="tool-btn w-10 h-10 rounded flex items-center justify-center text-gray-400 hover:bg-gray-800">
+          <i class="fa-solid fa-vector-square"></i>
+        </button>
+      </div>
+
+      <div class="w-8 h-px bg-gray-800"></div>
+
+      <!-- Class Selector -->
+      <div class="flex flex-col space-y-2 items-center">
+        <span class="text-[10px] text-gray-500 font-bold uppercase">Nhãn</span>
+        <button id="btnClassOk" title="Phím lành (Phím 1)" class="class-btn w-10 h-10 rounded-lg flex flex-col items-center justify-center border-2 border-emerald-500 bg-emerald-950/40 text-emerald-400">
+          <span class="text-xs font-bold">1</span>
+          <span class="text-[9px] uppercase tracking-tighter">OK</span>
+        </button>
+        <button id="btnClassDamaged" title="Phím hỏng (Phím 2)" class="class-btn w-10 h-10 rounded-lg flex flex-col items-center justify-center border border-gray-700 hover:border-red-500 text-red-400">
+          <span class="text-xs font-bold">2</span>
+          <span class="text-[9px] uppercase tracking-tighter">HỎNG</span>
+        </button>
+        <button id="btnClassMissing" title="Mất phím (Phím 3)" class="class-btn w-10 h-10 rounded-lg flex flex-col items-center justify-center border border-gray-700 hover:border-amber-500 text-amber-400">
+          <span class="text-xs font-bold">3</span>
+          <span class="text-[9px] uppercase tracking-tighter">MẤT</span>
+        </button>
+      </div>
+
+      <div class="w-8 h-px bg-gray-800"></div>
+
+      <!-- Action buttons -->
+      <div class="flex flex-col space-y-2">
+        <button id="deleteBoxBtn" title="Xóa box đã chọn (Del)" class="w-10 h-10 rounded flex items-center justify-center text-gray-400 hover:bg-red-900/50 hover:text-red-300">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+        <button id="resetZoomBtn" title="Khôi phục kích thước ảnh" class="w-10 h-10 rounded flex items-center justify-center text-gray-400 hover:bg-gray-800">
+          <i class="fa-solid fa-expand"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- CENTER CANVAS AREA -->
+    <main class="flex-1 flex flex-col bg-gray-950 overflow-hidden relative">
+
+      <!-- Navigation & Info Bar -->
+      <div class="bg-gray-900/70 backdrop-blur px-4 py-2 border-b border-gray-800/80 flex items-center justify-between z-10 text-xs">
+        <div class="flex items-center space-x-2">
+          <button id="prevBtn" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-200 flex items-center">
+            <i class="fa-solid fa-chevron-left mr-1"></i> Trước (A)
+          </button>
+          <span id="imageCounter" class="text-gray-300 font-mono">0 / 0</span>
+          <button id="nextBtn" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 rounded text-gray-200 flex items-center">
+            Sau (D) <i class="fa-solid fa-chevron-right ml-1"></i>
+          </button>
+          <span class="text-gray-600">|</span>
+          <span id="currentImageName" class="text-gray-300 font-mono truncate max-w-sm" title="">Chưa có ảnh</span>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-2">
+            <span class="inline-flex items-center text-emerald-400">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-1.5"></span>
+              OK: <strong id="okCount" class="ml-1 font-mono">0</strong>
+            </span>
+            <span class="inline-flex items-center text-red-400">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500 mr-1.5"></span>
+              Hỏng: <strong id="damagedCount" class="ml-1 font-mono">0</strong>
+            </span>
+            <span class="inline-flex items-center text-amber-400">
+              <span class="w-2.5 h-2.5 rounded-full bg-amber-500 mr-1.5"></span>
+              Mất: <strong id="missingCount" class="ml-1 font-mono">0</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Canvas viewport -->
+      <div id="canvasViewport" class="flex-1 overflow-hidden relative flex items-center justify-center canvas-container cursor-crosshair">
+        <canvas id="mainCanvas" class="shadow-2xl"></canvas>
+        <div id="loadingOverlay" class="absolute inset-0 bg-gray-950/80 flex items-center justify-center hidden z-20">
+          <div class="flex flex-col items-center">
+            <i class="fa-solid fa-circle-notch fa-spin text-3xl text-indigo-500 mb-2"></i>
+            <span class="text-xs text-gray-400">Đang tải ảnh và nhãn...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Hint Bar -->
+      <footer class="bg-gray-900 border-t border-gray-800 px-4 py-1.5 flex items-center justify-between text-[11px] text-gray-500">
+        <div>
+          <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-gray-300">A</kbd> / <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-gray-300">D</kbd>: Đổi ảnh &nbsp;•&nbsp; 
+          <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-gray-300">1</kbd>/<kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-gray-300">2</kbd>/<kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-gray-300">3</kbd>: Đổi nhãn box &nbsp;•&nbsp; 
+          <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-gray-300">Del</kbd>: Xóa box &nbsp;•&nbsp; 
+          <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-gray-300">Shift+Del</kbd>: Xóa ảnh vào deleted &nbsp;•&nbsp; 
+          <kbd class="px-1.5 py-0.5 bg-gray-800 rounded text-gray-300">Ctrl+S</kbd>: Lưu
+        </div>
+        <div id="canvasZoomInfo">Zoom: 100%</div>
+      </footer>
+    </main>
+
+    <!-- RIGHT SIDEBAR: LIST OF ANNOTATIONS -->
+    <aside class="w-72 bg-gray-900 border-l border-gray-800 flex flex-col shrink-0">
+      <div class="p-3 border-b border-gray-800 flex items-center justify-between">
+        <h2 class="text-xs font-semibold uppercase tracking-wider text-gray-400">Danh sách Bounding Box</h2>
+        <span id="totalBoxBadge" class="bg-gray-800 px-2 py-0.5 rounded text-[11px] text-gray-300 font-mono">0</span>
+      </div>
+
+      <div id="boxList" class="flex-1 overflow-y-auto p-2 space-y-1 text-xs">
+        <!-- Rendered by JS -->
+      </div>
+    </aside>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

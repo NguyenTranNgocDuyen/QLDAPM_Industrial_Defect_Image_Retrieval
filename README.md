@@ -1,49 +1,93 @@
 # Industrial Defect Image Retrieval
 
-Hệ thống phát hiện lỗi ngoại quan trên thiết bị điện tử bằng xử lý ảnh và AI.
+Hệ thống phát hiện lỗi ngoại quan trên thiết bị điện tử bằng xử lý ảnh và AI (hỗ trợ kiểm tra ngoại quan điện thoại và bàn phím).
 
-## Kiến trúc
+## Kiến trúc Hệ thống
+
+Hệ thống được thiết kế theo kiến trúc 3 tầng phân tán, tách biệt độc lập giữa module kiểm tra điện thoại và module kiểm tra bàn phím:
 
 ```mermaid
-flowchart LR
-    A[Flutter App] -->|multipart image| B[Spring Boot API]
-    B -->|internal HTTP request| C[Python Image Service]
-    C --> D[OpenCV / hình học]
-    D --> E[Phone segmentation + damage-mask inference]
-    E --> C
-    C -->|detections + timings| B
-    B --> F[(Scan History)]
-    B -->|JSON result| A
+flowchart TD
+    subgraph Client ["Client (Flutter Mobile App)"]
+        UI[InspectionHomeScreen]
+        PhoneUI[Phone Inspection Screen]
+        KeyUI[Keyboard Inspection Screen]
+        UI --> PhoneUI
+        UI --> KeyUI
+    end
+
+    subgraph Backend ["Backend API (Spring Boot :8080)"]
+        Gateway[REST Controllers]
+        PhoneCtrl["/api/inspections"]
+        KeyCtrl["/api/keyboard-inspections"]
+        DB[(PostgreSQL Database)]
+        
+        Gateway --> PhoneCtrl
+        Gateway --> KeyCtrl
+        PhoneCtrl --> DB
+        KeyCtrl --> DB
+    end
+
+    subgraph Workers ["Python AI/Vision Services"]
+        PhoneWorker["Phone Damage Worker (:8000)\nRF-DETR + Damage Mask"]
+        KeyWorker["Keyboard Vision Worker (:8001)\nKey Detection + Grid Topology Engine"]
+    end
+
+    PhoneUI -->|multipart/form-data| PhoneCtrl
+    KeyUI -->|multipart/form-data| KeyCtrl
+    PhoneCtrl -->|HTTP POST /analyze| PhoneWorker
+    KeyCtrl -->|HTTP POST /analyze| KeyWorker
 ```
 
-- `image-processing/`: xử lý ảnh, enhancement, phone segmentation, damage-mask inference và đo thời gian.
-- `backend/`: API Spring Boot, validation, điều phối inference và lưu lịch sử.
-- `app/`: Flutter UI, upload/camera, hiển thị source/overlay-mask và lịch sử quét.
-- `contracts/`: hợp đồng dữ liệu dùng chung giữa ba thành phần.
-- `docs/`: thiết kế hệ thống và tài liệu thực nghiệm.
+- `image-processing/`: Xử lý ảnh, enhancement, phone segmentation, damage-mask inference và keyboard vision worker.
+- `backend/`: API Spring Boot, validation, điều phối inference giữa các worker và lưu trữ lịch sử quét.
+- `app/`: Ứng dụng Flutter UI, upload/chụp ảnh, hiển thị overlay trực quan và lịch sử kiểm tra.
+- `contracts/`: Hợp đồng JSON Schema dùng chung giữa các thành phần (`contracts/keyboard-inspection-result.schema.json`).
+- `docs/`: Tài liệu thiết kế hệ thống, nghiên cứu thực nghiệm và dataset card.
 
-## Trạng thái
+---
 
-Phase 1 đã xác định pipeline tổng thể, ranh giới trách nhiệm và hợp đồng kết quả phát hiện. Xem [tài liệu Phase 1](docs/phase-01-overall-pipeline.md).
+## 1. Module Kiểm tra Ngoại quan Điện thoại (Phone Defect Inspection)
 
-Phase 2 đã cài đặt Perspective Correction trên Python/OpenCV, kèm CLI, ảnh before/after, timing và unit test. Xem [tài liệu Phase 2](docs/phase-02-perspective-correction.md).
+Đã hoàn thành các phase nghiên cứu và tích hợp runtime:
+- **Phase 1**: Pipeline tổng thể và ranh giới trách nhiệm ([docs/phase-01-overall-pipeline.md](docs/phase-01-overall-pipeline.md)).
+- **Phase 2**: Perspective Correction với OpenCV ([docs/phase-02-perspective-correction.md](docs/phase-02-perspective-correction.md)).
+- **Phase 3**: Illumination Correction (Gamma, CLAHE, Background Estimation) ([docs/phase-03-illumination-correction.md](docs/phase-03-illumination-correction.md)).
+- **Phase 4**: Color Space Transformation & Contrast Metrics (CNR, Weber, Michelson) ([docs/phase-04-color-space.md](docs/phase-04-color-space.md)).
+- **Phase 5**: Data Augmentation đồng bộ Bounding Box YOLO ([docs/phase-05-image-augmentation.md](docs/phase-05-image-augmentation.md)).
+- **Phase 6**: Before & After Comparison Suite ([docs/phase-06-before-after-comparison.md](docs/phase-06-before-after-comparison.md)).
+- **Phase 7**: YOLO baseline pipeline ([docs/phase-07-yolo-baseline.md](docs/phase-07-yolo-baseline.md)).
+- **Runtime v3**: Kiến trúc chính thức **damage-mask segmentation** (RF-DETR segmentation vùng điện thoại + mô hình damage tạo mask ứng viên trên ảnh gốc). Chi tiết tại [phone damage v3](docs/PHONE_DAMAGE_V3.md) và [quyết định kiến trúc segmentation](docs/SEGMENTATION_RUNTIME.md).
 
-Phase 3 đã cài đặt Illumination Correction với Gamma, CLAHE, background estimation và chế độ kết hợp. Xem [tài liệu Phase 3](docs/phase-03-illumination-correction.md).
+---
 
-Phase 4 đã cài đặt Color Space Transformation (BGR, RGB, Gray, HSV, LAB), trích xuất kênh, tính toán tương phản (Weber, Michelson, CNR) và sinh ảnh so sánh. Xem [tài liệu Phase 4](docs/phase-04-color-space.md).
+## 2. Module Kiểm tra Ngoại quan Bàn phím (Keyboard Defect & Layout Inspection)
 
-Phase 5 đã cài đặt Data Augmentation cho thiết bị điện tử, đồng bộ tọa độ Bounding Box YOLO (Flip, Rotation, Brightness, Noise, Blur) và export nhãn YOLO. Xem [tài liệu Phase 5](docs/phase-05-image-augmentation.md).
+Tiếp nối module kiểm tra điện thoại, module bàn phím tập trung giải quyết các bài toán lỗi hình học và lỗi bề mặt đặc thù trên linh kiện bàn phím máy tính/laptop:
 
-Phase 6 đã cài đặt Before & After Comparison Suite với bộ chỉ số định lượng (CNR, Tenengrad, Laplacian Var, Entropy, Noise Amplification) và bảng so sánh trực quan. Xem [tài liệu Phase 6](docs/phase-06-before-after-comparison.md).
+### Mục tiêu chức năng
+1. **Phát hiện lỗi phím (`defective_key` / `damaged_keycap`)**: Phát hiện các khuyết tật vật lý trên bề mặt keycap như nứt, vỡ, trầy xước, biến dạng, mòn ký tự.
+2. **Phát hiện mất phím / thiếu phím (`missing_key`)**: Xác định các vị trí switch bị trống do rơi hoặc thiếu lắp ráp keycap.
+3. **Phát hiện sai vị trí & lệch phím (`shifted_key`, `tilted_key`, `misplaced_key`)**:
+   - *Lệch hình học*: Phím bị kênh, xiên góc (`tilted_key`), hoặc bị xô lệch khỏi tâm bước lưới (`shifted_key`).
+   - *Sai vị trí ký tự*: Phím bị lắp nhầm vị trí so với layout quy chuẩn (`wrong_keycap` / `misplaced_key`).
+4. **Nhận diện và đối soát Layout (`layout_validation`)**: Tự động nhận diện cấu hình bàn phím (ANSI 104, ANSI 87 TKL, ISO 105, 60%, 65%, 75%, Laptop) dựa trên số hàng phím, số lượng phím và hình dạng/kích thước phím chức năng (Enter, Space, Shift).
 
-Phase 7 đã thiết lập YOLO baseline pipeline: adapter Ultralytics, mock detector, postprocess bounding box, ảnh annotated và timing theo contract. Đây là baseline/CLI độc lập, không phải luồng runtime hiện tại. Xem [tài liệu Phase 7](docs/phase-07-yolo-baseline.md).
+### Kiến trúc Hybrid: Deep Learning + Grid Topology Engine
+Để đạt độ tin cậy và khả năng mở rộng tối đa, hệ thống áp dụng kiến trúc phối hợp:
+- **Tầng 1 - Deep Learning Object Detection (YOLO / Vision Model)**: Chịu trách nhiệm phát hiện sự hiện diện của phím (`key`) và các bất thường bề mặt (`defective_key` / `damaged_keycap`).
+- **Tầng 2 - Grid & Layout Topology Engine (OpenCV / Rule-based Heuristic)**: Phân tích cấu trúc lưới hàng/cột, đo khoảng cách hình học, phát hiện khoảng trống (`missing_key`), đo độ xiên lệch (`shifted_key`, `tilted_key`) và đối chiếu layout với template chuẩn.
 
-Luồng runtime hiện tại dùng worker phone damage v3: RF-DETR segmentation xác định vùng điện thoại, sau đó mô hình damage tạo mask ứng viên trên ảnh gốc; backend lưu kết quả và Flutter hiển thị overlay. Chi tiết tại [phone damage v3](docs/PHONE_DAMAGE_V3.md). Worker hiện trả `detections=[]`; vì vậy UI runtime chưa hiển thị bounding box/class/confidence kiểu YOLO.
+Chi tiết về kiến trúc, quyết định triển khai, dataset và tiến trình nghiên cứu xem tại:
+- [Quyết định kiến trúc & triển khai runtime bàn phím](docs/KEYBOARD_RUNTIME.md)
+- [Báo cáo tiến trình và tích hợp mô hình](docs/KEYBOARD_DETECTION_PROGRESS.md)
+- [Tài liệu hướng dẫn kiểm tra bàn phím](docs/KEYBOARD_INSPECTION.md)
+- [Dataset Card bàn phím](datasets/keyboard/DATASET_CARD.md)
+- [Tài liệu chuẩn bị dữ liệu và huấn luyện](docs/KEYBOARD_DATA_AND_TRAINING.md)
 
-Kiến trúc runtime chính thức là **damage-mask segmentation**. Việc còn lại là đánh giá trên test set độc lập bằng metric segmentation phù hợp (IoU, Dice, pixel/image-level precision-recall), calibration ngưỡng và benchmark thời gian trên máy đích. YOLO chỉ được giữ lại như baseline/CLI nghiên cứu, không phải một phần của demo runtime.
+---
 
-Xem [quyết định kiến trúc segmentation](docs/SEGMENTATION_RUNTIME.md) để biết chính xác dữ liệu mà app được phép hiển thị, metric cần đánh giá và giới hạn hiện tại.
-
-Hướng dẫn cài đặt, chạy test và demo từ clone mới: [SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md).
+## Hướng dẫn cài đặt và chạy
+Xem hướng dẫn chi tiết tại [SETUP_AND_RUN.md](docs/SETUP_AND_RUN.md).
 
 

@@ -144,13 +144,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(); parser.add_argument("--output", type=Path, default=DERIVED)
     parser.add_argument("--skip-keycap", action="store_true", help="Prepare only the smaller BSX defect export.")
     args = parser.parse_args()
-    bsx = voc_records(EXTERNAL / "roboflow-bsx-defect"); rsi = voc_records(EXTERNAL / "roboflow-rsi-defect")
+    bsx = voc_records(EXTERNAL / "roboflow-bsx-defect")
+    rsi = voc_records(EXTERNAL / "roboflow-rsi-defect")
+    defect_source = bsx if bsx else rsi
+    if not defect_source:
+        print(f"Warning: No defect records found in {EXTERNAL / 'roboflow-bsx-defect'} or {EXTERNAL / 'roboflow-rsi-defect'}")
     rsi_hashes = {row["sha256"] for row in rsi}; bsx_hashes = {row["sha256"] for row in bsx}
     args.output.mkdir(parents=True, exist_ok=True)
-    print("Preparing unique BSX defect export...", flush=True)
-    report = {"bsx": audit("bsx", bsx), "rsi": audit("rsi", rsi),
-              "rsi_is_subset_of_bsx": rsi_hashes.issubset(bsx_hashes), "shared_bsx_rsi_hashes": len(rsi_hashes & bsx_hashes),
-              "derived_bsx": build_bsx(bsx, args.output / "bsx-keyboard-defect")}
+    print("Preparing unique defect export...", flush=True)
+    report = {"bsx": audit("bsx", bsx) if bsx else {}, "rsi": audit("rsi", rsi) if rsi else {},
+              "rsi_is_subset_of_bsx": rsi_hashes.issubset(bsx_hashes) if (bsx and rsi) else True,
+              "shared_bsx_rsi_hashes": len(rsi_hashes & bsx_hashes),
+              "derived_bsx": build_bsx(defect_source, args.output / "bsx-keyboard-defect") if defect_source else {}}
     if not args.skip_keycap:
         print("Parsing Kaggle key-level XML and exporting YOLO labels...", flush=True)
         kaggle = voc_records(EXTERNAL / "keyboard-key-detection" / "dataset_final", with_hash=False)

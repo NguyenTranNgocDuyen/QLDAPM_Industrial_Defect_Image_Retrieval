@@ -1,22 +1,47 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.pyd
+.Python
 .venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
 
-# Generated experiment artifacts
+# Generated experiment & training artifacts
+outputs/keyboard-inspections/
+outputs/keyboard-training/
+outputs/pytest-local/
 image-processing/outputs/
+runs/
+**/runs/
+wandb/
+lightning_logs/
 
-# Large model weights and local caches
+# Large model weights and checkpoints
 *.pt
 *.pth
 *.onnx
 *.bin
+*.engine
+*.tflite
+*.safetensors
+*.ckpt
+*.h5
+*.pkl
 image-processing/models/*
 !image-processing/models/.gitkeep
 !image-processing/models/README.md
 
-# Environment configuration
+# Environment configuration & secrets
 .env
+.env.*
+!.env.example
 image-processing/.env
 
 # Java and Flutter build output
@@ -24,7 +49,51 @@ image-processing/.env
 backend/target/
 app/.dart_tool/
 app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/android/.gradle/
+app/android/local.properties
+*.class
 
-# Derived keyboard datasets are reproducible from external source data.
+# Datasets and training images/labels (keep only documentation & gitkeep)
 datasets/keyboard/derived/
 datasets/keyboard/external/
+datasets/keyboard/training_dataset/
+datasets/**/raw/
+datasets/**/raw_extracted/
+datasets/**/processed/
+datasets/**/processed_*/
+datasets/**/deleted/
+datasets/**/images/
+datasets/**/labels/
+datasets/**/*.jpg
+datasets/**/*.jpeg
+datasets/**/*.png
+datasets/**/*.bmp
+datasets/**/*.webp
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Logs & temp files
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# OS & IDE metadata
+.DS_Store
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+.idea/
+.vscode/
+*.iml
+.vs/

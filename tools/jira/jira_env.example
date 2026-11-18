@@ -1,0 +1,26 @@
+# Copy file này thành `.env.jira` ở thư mục gốc dự án (`.env.jira` đã được `.gitignore` chặn commit).
+# KHÔNG BAO GIỜ commit API Token lên Git hoặc gửi token qua chat!
+
+# 1. Đường dẫn trang Jira Cloud của nhóm (không có dấu `/` ở cuối)
+JIRA_BASE_URL=https://ten-nhom-cua-ban.atlassian.net
+
+# 2. Email tài khoản Jira của bạn (PM / Admin của Project)
+JIRA_EMAIL=your-email@example.com
+
+# 3. Atlassian API Token — tạo tại: https://id.atlassian.com/manage-profile/security/api-tokens
+JIRA_API_TOKEN=ATATT3xFfGF0...
+
+# 4. Project Key của dự án Scrum bạn đã tạo trên Jira (ví dụ: IDIR)
+JIRA_PROJECT_KEY=IDIR
+
+# 5. (Tùy chọn) Bỏ trống để script tự phát hiện Scrum Board của Project
+# JIRA_BOARD_ID=
+
+# 6. Email Jira hoặc Atlassian Account ID của 5 thành viên (TV1..TV5)
+# Lưu ý: Cả 5 người phải đã Accept lời mời vào Project trước.
+# Chạy `python tools/jira/sync_jira_project.py --check-connection` để xem danh sách accountId/email chuẩn.
+TV1_USER=tv1@example.com
+TV2_USER=tv2@example.com
+TV3_USER=tv3@example.com
+TV4_USER=tv4@example.com
+TV5_USER=tv5@example.com
